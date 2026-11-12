@@ -1,0 +1,10 @@
+{
+  "source": "https://blog.polyhaven.com/verdant-trail/",
+  "download_url": "https://dl.polyhaven.org/file/ph-assets/Scenes/verdant_trail.zip",
+  "bytes": 1918654862,
+  "sha1": "999c7bcb199a445c057cacdc27cbc7d5d3107976",
+  "sha256": "90e483de4a065586b86b8e924276cdd139f124c971cf99aa0601f3ece8ce2d2b",
+  "server_sha1": "999c7bcb199a445c057cacdc27cbc7d5d3107976",
+  "verification": "Size, server SHA1 and ZIP CRC verified; not opened or executed.",
+  "license_reference": "https://polyhaven.com/license"
+}

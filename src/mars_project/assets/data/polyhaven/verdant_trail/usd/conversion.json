@@ -1,0 +1,21 @@
+{
+  "source": "verdant_trail.blend",
+  "source_url": "https://blog.polyhaven.com/verdant-trail/",
+  "frame": 1,
+  "blender_version": "4.5.9 LTS",
+  "anchor": [
+    7.450580596923828e-09,
+    0.0,
+    -0.14455416798591614
+  ],
+  "source_objects": 173,
+  "note": "Visual-only background. Blender procedural shader effects may not translate exactly to USD Preview Surface.",
+  "static_instances": 13484,
+  "unique_meshes": 171,
+  "subdivision_cap": 1,
+  "final_usd": "verdant_trail_instanced.usdc",
+  "usd_instances": 13484,
+  "usd_mesh_prototypes": 171,
+  "validation": "Syntax, CLI defaults, stage composition, texture resolution, and in-memory USD loader checked. No Isaac Sim launch or rendering.",
+  "sky": "Original 8K Kloofendal HDRI used via Isaac Lab dome; source sun lights retained."
+}

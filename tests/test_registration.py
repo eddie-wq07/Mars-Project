@@ -1,16 +1,10 @@
-# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
-"""Tests for the project's task registrations."""
-
+"""Check the standalone project's Gymnasium registration."""
 import gymnasium as gym
+import mars_project.tasks.h1  # noqa: F401
+
 
 def test_task_registrations():
-    """The project tasks must expose valid environment and agent entry points."""
-    assert all(
-        not str(spec.kwargs.get("env_cfg_entry_point", "")).startswith("mars_project.tasks")
-        for spec in gym.registry.values()
-    )
-
+    spec = gym.spec("Mars-Project-H1")
+    assert spec.entry_point == "isaaclab.envs:ManagerBasedRLEnv"
+    assert spec.kwargs["env_cfg_entry_point"] == "mars_project.tasks.h1:MarsH1EnvCfg"
+    assert spec.kwargs["rsl_rl_cfg_entry_point"] == "mars_project.tasks.h1:MarsH1PPORunnerCfg"

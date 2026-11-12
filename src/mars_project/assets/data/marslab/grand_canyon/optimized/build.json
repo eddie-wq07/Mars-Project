@@ -1,0 +1,16 @@
+{
+  "visual_vertices": 263169,
+  "collision_vertices": 81,
+  "collision_triangles": 128,
+  "collision_width_m": 46.875,
+  "albedo_resolution": [
+    4096,
+    4096
+  ],
+  "detail_resolution": [
+    512,
+    512
+  ],
+  "spawn_z": 0,
+  "seed": 7
+}
