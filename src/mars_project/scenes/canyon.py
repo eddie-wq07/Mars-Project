@@ -10,7 +10,7 @@ def configure_canyon_scene(cfg):
     from isaaclab.assets import AssetBaseCfg
     from isaaclab_visualizers.kit import KitVisualizerCfg
 
-    for name in ('scenery.usdc', 'local_ground.usdc'):
+    for name in ('scenery.usdc', 'local_ground.usdc', 'sky.png'):
         if not (OPTIMIZED_DIR / name).is_file():
             raise FileNotFoundError(f'Build canyon assets first: python -m mars_project.assets.build_canyon ({name})')
     cfg.scene.canyon_scenery = AssetBaseCfg(
@@ -25,11 +25,13 @@ def configure_canyon_scene(cfg):
     cfg.scene.terrain.debug_vis = False
     # Neutral sky fill preserves rock colors; a warm sun supplies directional shape.
     cfg.scene.sky_light.spawn = sim_utils.DomeLightCfg(
-        intensity=1.25, color=(0.78, 0.84, 1.0), visible_in_primary_ray=True)
+        intensity=2.0, color=(1.0, 1.0, 1.0), visible_in_primary_ray=True,
+        texture_file=str(OPTIMIZED_DIR / 'sky.png'), texture_format='latlong')
+    cfg.scene.sky_light.init_state.rot = (0.7071068, 0., 0., 0.7071068)
     cfg.scene.canyon_sun = AssetBaseCfg(
         prim_path='/World/CanyonSun',
         spawn=sim_utils.DistantLightCfg(intensity=3.0, color=(1.0, .88, .72), angle=0.7),
-        init_state=AssetBaseCfg.InitialStateCfg(rot=(.9659258, .2588190, 0., 0.)),
+        init_state=AssetBaseCfg.InitialStateCfg(rot=(.2588190, 0., 0., .9659258)),
         cloning_contexts=(),
     )
     cfg.sim.default_visualizer_cfg = KitVisualizerCfg(
@@ -41,12 +43,15 @@ def configure_canyon_scene(cfg):
 def add_canyon_scene(appearance):
     """Apply lightweight render settings and verify the prebuilt terrain."""
     import carb.settings
-    from pxr import UsdGeom, UsdPhysics
+    from pxr import Sdf, UsdGeom, UsdLux, UsdPhysics
     from isaaclab.sim.utils.stage import get_current_stage
 
     if appearance != 'grand-canyon':
         raise ValueError(appearance)
     stage = get_current_stage()
+    for prim in stage.Traverse():
+        if prim.IsA(UsdLux.DomeLight):
+            prim.CreateAttribute('omni:rtx:usdluxVersion', Sdf.ValueTypeNames.Int).Set(2505)
     ground = stage.GetPrimAtPath('/World/ground/terrain/Ground')
     if not ground or not ground.HasAPI(UsdPhysics.CollisionAPI):
         raise RuntimeError('Local canyon collision mesh was not loaded')
@@ -61,6 +66,8 @@ def add_canyon_scene(appearance):
         '/rtx/post/tonemap/exposureTime': 1.,
         '/rtx/post/tonemap/fNumber': 1.,
         '/rtx/post/tonemap/responsivity': 1.,
+        '/rtx/background/source/type': 'domeLight',
+        '/rtx/raytracing/showLights': 0,
         '/rtx/raytracing/globalVolumetricEffects/enabled': False,
         '/app/viewport/grid/enabled': False,
     }.items():

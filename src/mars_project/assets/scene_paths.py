@@ -12,7 +12,7 @@ def validate_assets(appearance: str) -> None:
         (EARTH_DIR / "usd" / "verdant_trail_earth.usdc", EARTH_DIR / "usd" / "earth_collision_ground.usda")
         if appearance == "earth"
         else tuple(GRAND_CANYON_DIR / "optimized" / name for name in (
-            "scenery.usdc", "local_ground.usdc", "albedo.jpg", "rock_normal.png", "roughness.png"
+            "scenery.usdc", "local_ground.usdc", "albedo.jpg", "rock_normal.png", "roughness.png", "sky.png"
         ))
     )
     for path in required:

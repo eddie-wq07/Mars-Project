@@ -15,10 +15,26 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade, Vt
 from mars_project.assets.scene_paths import GRAND_CANYON_DIR
 
 
+def build_sky():
+    """Small latlong daytime sky, with a warm horizon and no volume simulation."""
+    output = GRAND_CANYON_DIR / 'optimized'
+    output.mkdir(exist_ok=True)
+    latitude = np.linspace(np.pi / 2, -np.pi / 2, 512)[:, None, None]
+    altitude = np.maximum(np.sin(latitude), 0) ** .55
+    horizon = np.array([.90, .72, .55])[None, None, :]
+    zenith = np.array([.43, .49, .59])[None, None, :]
+    sky = horizon * (1 - altitude) + zenith * altitude
+    # Darker lower hemisphere avoids lighting terrain as if the sky were below it.
+    sky = np.where(latitude < 0, np.array([.20, .15, .11])[None, None, :], sky)
+    sky = np.broadcast_to(sky, (512, 1024, 3))
+    Image.fromarray(np.uint8(np.clip(sky, 0, 1) * 255)).save(output / 'sky.png')
+
+
 def build():
     folder = GRAND_CANYON_DIR
     output = folder / 'optimized'
     output.mkdir(exist_ok=True)
+    build_sky()
     # This is the known downloaded 20k source, decoded offline in CPU RAM only.
     Image.MAX_IMAGE_PIXELS = 450_000_000
     with zipfile.ZipFile(folder / 'grand_canyon.usdz') as archive:
