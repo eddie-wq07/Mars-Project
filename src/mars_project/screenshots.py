@@ -41,7 +41,7 @@ def screenshot_path(
 
 
 def frame_robot(stage, camera_path, robot):
-    """Center live H1 body positions and fit roughly 40% of image height."""
+    """Frame at the live body's midpoint height; return the framing center."""
     from pxr import Gf, UsdGeom
 
     camera = UsdGeom.Camera(stage.GetPrimAtPath(camera_path))
@@ -52,7 +52,8 @@ def frame_robot(stage, camera_path, robot):
     high = [max(p[i] for p in points) + 0.15 for i in range(3)]
     center = Gf.Vec3d(*[(a + b) / 2 for a, b in zip(low, high, strict=True)])
     eye = original.ExtractTranslation()
-    # Keep the scene's viewing direction, but aim at the robot's current position.
+    # Keep horizontal placement and aim level at the robot's body midpoint.
+    eye[2] = center[2]
     matrix = Gf.Matrix4d().SetLookAt(eye, center, Gf.Vec3d(0, 0, 1)).GetInverse()
     view = matrix.GetInverse()
     corners = [
@@ -66,6 +67,7 @@ def frame_robot(stage, camera_path, robot):
     span = max(p[1] / -p[2] for p in corners) - min(p[1] / -p[2] for p in corners)
     camera.GetFocalLengthAttr().Set(0.40 * camera.GetVerticalApertureAttr().Get() / span)
     xform.GetOrderedXformOps()[0].Set(matrix)
+    return tuple(center)
 
 
 def capture_screenshot(sim, robot, label: str = "render", *, subfolder=None, reframe=True, requested=False):

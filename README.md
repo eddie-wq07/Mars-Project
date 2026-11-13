@@ -257,14 +257,61 @@ Render warmup does not advance physics. Files are saved under `outputs/recording
 as `h:mmam_earth-test-A.png` and `h:mmam_earth-test-B.png` (using the actual capture time).
 The policy still receives a zero velocity command.
 
-Earth rendering initialization (2026-11-13): apply shared exposure/tonemapping settings to the initial
-viewport, render three frames without stepping physics, then reset and select/configure the final camera.
-The `cd5998a` refactor removed the early application. Reinstating the call alone produced both bright
-and dark runs, so initialization timing is suspected rather than a changed exposure value. The explicit
-render updates allow Kit to consume the initial-view changes before the camera switch. Keep original
-HDR lighting, sky, exposure and tonemapping values. A fixed-state sky-dome toggle did not establish a
-two-dome conflict. The exact internal RTX mechanism is not confirmed; verify rendered output after
-future renderer or startup changes.
+### Camera and lighting troubleshooting
+
+**Symptom (2026-11-13):** intermittent near-black robot/ground in Earth recordings,
+including `earth-6`, despite unchanged HDR assets and neutral exposure. Do not accept
+such a recording as merely a dark scene. Inspect a rendered frame before delivering it.
+
+**Leading suspected cause:** a loading/startup timing error: rendering or camera
+activation may occur before assets and lighting/view settings are fully consumed by
+RTX. Eddie flagged this on 2026-11-13. Treat loading synchronization and initialization
+order as the first investigation path if it recurs; the exact mechanism is unconfirmed.
+
+**Earlier workaround:** the `cd5998a` refactor removed initial-view settings. Commit
+`b062fba` restored them and inserted three render updates before reset. This produced
+both bright and dark runs and did **not** establish a permanent fix. Identical authored
+settings in bright/dark runs do not prove that RTX has consumed them correctly.
+
+**Startup hardening:** configure synchronous USD/material loading and Earth renderer
+settings before `gym.make()` loads the scene. Configure the initial view as before.
+Author the final camera's exposure and the render product's settings **before** calling
+`set_active_camera()`, then render three updates without advancing physics. Author
+`omni:rtx:lights:dome:samplingStrategy = imageBasedLighting` on the render product,
+using `OmniRtxSettingsCommonAdvancedAPI_1`, as well as the legacy Carb setting.
+Each launch prints a `RENDER_VIEW` JSON snapshot of the selected camera, exposure,
+auto-exposure, renderer, HDR sampling and tonemapper for comparison.
+
+**Evidence and limits:** controlled captures at one frozen robot pose showed that
+lowering the camera to the body midpoint preserves correct illumination. Reapplying
+settings and hiding/restoring the camera-sky dome did not establish a cure for the
+intermittent fault. The precise internal RTX race is unconfirmed; the changes above
+remove late/default configuration windows rather than compensate with brighter lights.
+Preserve HDR light intensity/exposure, the two dome assets and ACES. Camera-height
+changes alone must not alter any of those values. Fixed captures and orbits use the
+measured body midpoint height; the orbit measures it after settling and holds it fixed.
+
+Investigation logs: `outputs/log/lighting-investigation-zaMBMW.log`,
+`outputs/log/lighting-height-investigation-5dh4Gu.log`, and
+`outputs/log/lighting-startup-investigation-TuAHZm.log`. The original failed recording's
+log is `outputs/log/earth-6-level-camera-6ZhE5T.log`; keep it and the original video.
+Diagnostic stills are under `outputs/recordings/11-13-2026/misc/` with `lighting-diag`
+in their names. `tests/test_camera_settings.py` checks stale exposure/sampling overrides
+and lens preservation, but does not replace fresh-process rendered verification.
+
+Verification after hardening: the six-second `earth-6/2:03pm_earth-6-orbit.mp4` and a
+second fresh-process one-second `misc/2:05pm_lighting-startup-repeat-orbit.mp4` both
+rendered with illuminated ground and visible robot surfaces. Inspected frames at 0,
+3 and 5 seconds in the full recording, and 0.5 seconds in the repeat. Logs:
+`outputs/log/earth-6-lighting-startup-fixed-d33Y7U.log` and
+`outputs/log/lighting-startup-repeat-YwwKHi.log`. Four camera/asset regression tests
+and Ruff checks passed. These runs support the mitigation, not proof that every
+possible RTX startup failure is eliminated.
+
+For future changes, run at least two fresh launches, compare the robot and ground in
+rendered captures, and retain separate logs. If darkness recurs, record the effective
+view state and compare fixed-pose renders before/after a single change; do not declare
+another fixed-frame delay a proven fix or silently raise exposure.
 
 Screenshot organization: captures made for diagnostics or verification without an explicit user request
 must go in `outputs/recordings/MM-DD-YYYY/misc/`. This is the default for both single captures and
@@ -347,7 +394,7 @@ For a cinematic six-second orbit saved alongside an existing test's video:
 ```
 
 Orbit mode lets the policy settle for one unrecorded simulation second, then captures an 80-degree fly-by arc (the trail's rocks and tree obstruct a full revolution)
-with eased camera speed, gentle elevation change and a fixed world-space target. The MP4 has an `-orbit` filename
+with eased camera speed and a level view at the robot's measured midpoint height. The MP4 has an `-orbit` filename
 suffix and stays in the test's folder. Fixed-camera recording remains the default.
 
 Earth outward-facing setup: spawn is fixed at `(0, 0, 1.05)` with zero root/joint velocities,
@@ -356,8 +403,8 @@ is on the outward trail at approximately `(0.0725, -6.6968)` in world XY. Facing
 that landmark gives yaw `atan2(-6.6968, 0.0725) = -89.38 degrees`, with the cave behind the robot.
 Initial orientation is XYZW identity before the yaw reset; this Isaac Lab build uses XYZW quaternions.
 
-The orbit now uses fixed world target `(0, 0, 0.95)` and the source camera position to establish its
-starting azimuth. Robot movement and heading no longer change the camera path. The same 80-degree
+The orbit uses fixed world target XY `(0, 0)` and the robot's measured midpoint height after
+settling, with the source camera position establishing its starting azimuth. Robot movement and heading no longer change the camera path. The same 80-degree
 arc, radius 2.6 m and 22 mm lens are used every run. Each launch logs the actual initial position,
 quaternion and six velocity components for verification. This establishes a reproducible reference;
 the earlier unseeded videos cannot be reproduced exactly from their MP4s alone.

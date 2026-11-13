@@ -44,6 +44,8 @@ def record_video(
         # Let the policy settle for one unrecorded second before the six-second shot.
         for _ in range(round(1.0 / step_dt)):
             action_step()
+        midpoint = frame_robot(stage, viewport.camera_path, robot)
+        camera_target = (camera_target[0], camera_target[1], midpoint[2])
         orbit = OrbitCamera(stage, viewport.camera_path, camera_target)
         orbit.update(0.0)
     for _ in range(60):
@@ -111,5 +113,5 @@ class OrbitCamera:
         eased = progress * progress * (3.0 - 2.0 * progress)
         angle = self.start_angle + math.radians(-20.0 + 80.0 * eased)
         target = Gf.Vec3d(*self.center)
-        eye = target + Gf.Vec3d(2.6 * math.cos(angle), 2.6 * math.sin(angle), 0.7 + 0.35 * math.sin(math.pi * eased))
+        eye = target + Gf.Vec3d(2.6 * math.cos(angle), 2.6 * math.sin(angle), 0.0)
         self.transform.Set(Gf.Matrix4d().SetLookAt(eye, target, Gf.Vec3d(0, 0, 1)).GetInverse())

@@ -101,6 +101,10 @@ def main():
     cfg.sim.gravity = (0.0, 0.0, -3.71 if args.gravity == "mars" else -9.81)
     configure_preview(cfg, args.appearance)
     with launch_simulation(cfg, args):
+        if args.appearance == "earth":
+            from mars_project.scenes.earth import prepare_earth_renderer
+
+            prepare_earth_renderer()
         print(f"Creating environment with {args.appearance} appearance...", flush=True)
         env = gym.make("Mars-Project-H1", cfg=cfg)
         try:
@@ -131,14 +135,19 @@ def main():
 
             from isaaclab.sim.utils.stage import get_current_stage
 
-            from mars_project.scenes.cameras import apply_view_settings, create_camera
+            from mars_project.scenes.cameras import apply_view_settings, create_camera, log_view_settings
 
             stage = get_current_stage()
             camera_path = create_camera(stage, cfg)
             viewport = get_active_viewport()
             if viewport:
-                viewport.set_active_camera(camera_path)
+                # Author exposure and render-product settings BEFORE activating
+                # a fresh camera; do not let its first render use default exposure.
                 apply_view_settings(stage, camera_path, viewport.render_product_path)
+                viewport.set_active_camera(camera_path)
+                for _ in range(3):
+                    env.unwrapped.sim.render()
+                log_view_settings(stage, viewport)
             policy = None
             observations = None
             if args.checkpoint:

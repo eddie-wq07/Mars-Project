@@ -42,7 +42,7 @@ def author_view_settings(stage, camera_path, render_product_path, render_mode="R
     # AddAppliedSchema also works in offline USD without loading Kit plugins.
     for schema in ["OmniRtxCameraExposureAPI_1", "OmniRtxCameraAutoExposureAPI_1"]:
         camera.GetPrim().AddAppliedSchema(schema)
-    for schema in ["OmniRtxSettingsCommonAPI_1", "OmniRtxPostTonemapAPI_1"]:
+    for schema in ["OmniRtxSettingsCommonAPI_1", "OmniRtxSettingsCommonAdvancedAPI_1", "OmniRtxPostTonemapAPI_1"]:
         product.GetPrim().AddAppliedSchema(schema)
     for name, value in CAMERA_EXPOSURE.items():
         camera.GetPrim().CreateAttribute(name, Sdf.ValueTypeNames.Float, custom=False).Set(value)
@@ -50,6 +50,9 @@ def author_view_settings(stage, camera_path, render_product_path, render_mode="R
     for name, value in {
         "omni:rtx:background:source:type": "domeLight",
         "omni:rtx:lights:visibilityOverride": "perLight",
+        # Author on the render product too: legacy global settings alone do not
+        # describe the effective view after a viewport/camera change.
+        "omni:rtx:lights:dome:samplingStrategy": "imageBasedLighting",
         "omni:rtx:rendermode": render_mode,
         "omni:rtx:post:tonemap:operator": "acesApproximation",
         "omni:rtx:post:tonemap:colorMode": "sRGBLinear",
@@ -65,6 +68,30 @@ def apply_view_settings(stage, camera_path, render_product_path):
     for name, value in VIEW_RENDER_SETTINGS.items():
         settings.set(name, value)
     author_view_settings(stage, camera_path, render_product_path)
+
+
+def log_view_settings(stage, viewport):
+    """Keep the selected view's authored state in each run's diagnostic log."""
+    import json
+
+    camera = stage.GetPrimAtPath(viewport.camera_path)
+    product = stage.GetPrimAtPath(viewport.render_product_path)
+    print(
+        "RENDER_VIEW "
+        + json.dumps(
+            {
+                "camera": str(viewport.camera_path),
+                "render_product": str(viewport.render_product_path),
+                "exposure": {name: camera.GetAttribute(name).Get() for name in CAMERA_EXPOSURE},
+                "auto_exposure": camera.GetAttribute("omni:rtx:autoExposure:enabled").Get(),
+                "mode": product.GetAttribute("omni:rtx:rendermode").Get(),
+                "dome_sampling": product.GetAttribute("omni:rtx:lights:dome:samplingStrategy").Get(),
+                "tonemap": product.GetAttribute("omni:rtx:post:tonemap:operator").Get(),
+            },
+            sort_keys=True,
+        ),
+        flush=True,
+    )
 
 
 def create_camera(stage, cfg):

@@ -31,13 +31,20 @@ EARTH_RENDER_SETTINGS = {
 }
 
 
-def apply_earth_render_settings():
-    """Apply per-run exposure after environment creation; no persistent settings changed."""
+def prepare_earth_renderer():
+    """Configure asset loading and HDR sampling before the scene reaches RTX."""
     import carb.settings
 
     settings = carb.settings.get_settings()
+    for name in ("/rtx/materialDb/syncLoads", "/rtx/hydra/materialSyncLoads", "/omni/kit/plugin/syncUsdLoads"):
+        settings.set(name, True)
     for name, value in EARTH_RENDER_SETTINGS.items():
         settings.set(name, value)
+
+
+def apply_earth_render_settings():
+    """Apply per-run exposure after environment creation; no persistent settings changed."""
+    prepare_earth_renderer()
     from omni.kit.viewport.utility import get_active_viewport
 
     from isaaclab.sim.utils.stage import get_current_stage
