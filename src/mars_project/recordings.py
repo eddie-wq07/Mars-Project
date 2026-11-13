@@ -58,7 +58,7 @@ def record_video(
                     raise RuntimeError("Simulation closed before recording finished")
                 action_step()
             if orbit is not None:
-                orbit.update(index / max(1, steps // stride - 1), robot_center(robot))
+                orbit.update(index / max(1, steps // stride - 1), robot_center(robot), dt=1.0 / fps)
                 # Render the moved camera before scheduling its frame capture.
                 sim.render()
             capture_frame(sim, viewport, frames / f"{index:06d}.png")
@@ -95,7 +95,7 @@ def record_video(
 
 
 class OrbitCamera:
-    """A repeatable cinematic arc translated with the live humanoid midpoint."""
+    """A cinematic arc following a damped target instead of individual footsteps."""
 
     def __init__(self, stage, camera_path, camera_target):
         from pxr import UsdGeom
@@ -103,16 +103,19 @@ class OrbitCamera:
         self.camera = UsdGeom.Camera(stage.GetPrimAtPath(camera_path))
         self.transform = UsdGeom.Xformable(self.camera).GetOrderedXformOps()[0]
         self.center = tuple(camera_target)
+        self.tracker = SmoothCameraTarget(self.center)
         original_eye = self.transform.Get().ExtractTranslation()
         self.start_angle = math.atan2(original_eye[1] - self.center[1], original_eye[0] - self.center[0])
         self.camera.GetFocalLengthAttr().Set(22.0)
 
-    def update(self, progress, center=None):
+    def update(self, progress, center=None, *, dt=1.0 / 25):
         from pxr import Gf
 
         eased = progress * progress * (3.0 - 2.0 * progress)
         angle = self.start_angle + math.radians(-20.0 + 80.0 * eased)
-        target = Gf.Vec3d(*(self.center if center is None else center))
+        if center is not None:
+            self.center = self.tracker.update(center, dt)
+        target = Gf.Vec3d(*self.center)
         eye = target + Gf.Vec3d(2.6 * math.cos(angle), 2.6 * math.sin(angle), 0.0)
         self.transform.Set(Gf.Matrix4d().SetLookAt(eye, target, Gf.Vec3d(0, 0, 1)).GetInverse())
 
@@ -121,3 +124,28 @@ def robot_center(robot):
     """World-space body bounds midpoint, matching screenshot framing."""
     points = robot.data.body_link_pose_w.torch[0, :, :3]
     return tuple(((points.amin(dim=0) + points.amax(dim=0)) / 2).detach().cpu().tolist())
+
+
+class SmoothCameraTarget:
+    """Two cascaded low-pass stages, timed in simulation seconds.
+
+    Follow horizontal travel promptly; reject footstep-frequency vertical bounce.
+    Both eye and look-at use this target so aiming cannot reintroduce the shake.
+    """
+
+    def __init__(self, center):
+        self.first = list(center)
+        self.center = list(center)
+
+    def update(self, target, dt):
+        if dt <= 0:
+            raise ValueError("Camera tracking dt must be positive")
+        for axis, tau in enumerate((0.12, 0.12, 0.4)):
+            decay = math.exp(-dt / tau)
+            previous = self.first[axis]
+            self.first[axis] = target[axis] + (previous - target[axis]) * decay
+            # Exact integration of two equal-time-constant filters for this sample.
+            self.center[axis] = (
+                target[axis] + (self.center[axis] - target[axis] + (previous - target[axis]) * dt / tau) * decay
+            )
+        return tuple(self.center)

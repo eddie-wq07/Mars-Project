@@ -289,7 +289,7 @@ intermittent fault. The precise internal RTX race is unconfirmed; the changes ab
 remove late/default configuration windows rather than compensate with brighter lights.
 Preserve HDR light intensity/exposure, the two dome assets and ACES. Camera-height
 changes alone must not alter any of those values. Fixed captures and orbits use the
-measured body midpoint height; the orbit tracks the live body midpoint throughout movement.
+measured body midpoint height; the orbit follows a smoothed body midpoint throughout movement.
 
 Investigation logs: `outputs/log/lighting-investigation-zaMBMW.log`,
 `outputs/log/lighting-height-investigation-5dh4Gu.log`, and
@@ -423,8 +423,10 @@ that landmark gives yaw `atan2(-6.6968, 0.0725) = -89.38 degrees`, with the cave
 Initial orientation is XYZW identity before the yaw reset; this Isaac Lab build uses XYZW quaternions.
 
 The orbit starts at the robot's measured midpoint after settling, with the source camera
-position establishing its starting azimuth. Each frame translates the orbit with the live
-body midpoint and aims directly at it, keeping the humanoid centered as it walks.
+position establishing its starting azimuth. Each frame filters the body midpoint before translating and aiming the orbit.
+Two cascaded filters use 0.12-second horizontal and 0.4-second vertical time constants
+to suppress footstep bounce. Both camera position and aim use the filtered target;
+the robot can bob naturally within the frame instead of shaking the whole view.
 Robot heading does not rotate the camera arc. The same 80-degree
 arc, radius 2.6 m and 22 mm lens are used every run. Each launch logs the actual initial position,
 quaternion and six velocity components for verification. This establishes a reproducible reference;
