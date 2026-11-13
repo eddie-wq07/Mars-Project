@@ -45,7 +45,7 @@ def record_video(
         for _ in range(round(1.0 / step_dt)):
             action_step()
         midpoint = frame_robot(stage, viewport.camera_path, robot)
-        camera_target = (camera_target[0], camera_target[1], midpoint[2])
+        camera_target = midpoint
         orbit = OrbitCamera(stage, viewport.camera_path, camera_target)
         orbit.update(0.0)
     for _ in range(60):
@@ -58,7 +58,7 @@ def record_video(
                     raise RuntimeError("Simulation closed before recording finished")
                 action_step()
             if orbit is not None:
-                orbit.update(index / max(1, steps // stride - 1))
+                orbit.update(index / max(1, steps // stride - 1), robot_center(robot))
                 # Render the moved camera before scheduling its frame capture.
                 sim.render()
             capture_frame(sim, viewport, frames / f"{index:06d}.png")
@@ -95,7 +95,7 @@ def record_video(
 
 
 class OrbitCamera:
-    """A repeatable world-space cinematic arc independent of robot pose or motion."""
+    """A repeatable cinematic arc translated with the live humanoid midpoint."""
 
     def __init__(self, stage, camera_path, camera_target):
         from pxr import UsdGeom
@@ -107,11 +107,17 @@ class OrbitCamera:
         self.start_angle = math.atan2(original_eye[1] - self.center[1], original_eye[0] - self.center[0])
         self.camera.GetFocalLengthAttr().Set(22.0)
 
-    def update(self, progress):
+    def update(self, progress, center=None):
         from pxr import Gf
 
         eased = progress * progress * (3.0 - 2.0 * progress)
         angle = self.start_angle + math.radians(-20.0 + 80.0 * eased)
-        target = Gf.Vec3d(*self.center)
+        target = Gf.Vec3d(*(self.center if center is None else center))
         eye = target + Gf.Vec3d(2.6 * math.cos(angle), 2.6 * math.sin(angle), 0.0)
         self.transform.Set(Gf.Matrix4d().SetLookAt(eye, target, Gf.Vec3d(0, 0, 1)).GetInverse())
+
+
+def robot_center(robot):
+    """World-space body bounds midpoint, matching screenshot framing."""
+    points = robot.data.body_link_pose_w.torch[0, :, :3]
+    return tuple(((points.amin(dim=0) + points.amax(dim=0)) / 2).detach().cpu().tolist())

@@ -50,4 +50,15 @@ def test_earth_ground_is_complete_triangle_mesh_for_height_scanner():
     indices = np.asarray(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)
     triangles = points[indices]
     areas = np.linalg.norm(np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]), axis=1) / 2
-    assert areas.sum() == pytest.approx(40000.0)
+    assert np.isfinite(points).all()
+    assert points[:, 0].min() == -2
+    assert points[:, 0].max() == 2
+    assert points[:, 1].min() == -5
+    assert points[:, 1].max() == 1.5
+    assert np.ptp(points[:, 2]) > 0.4
+    assert len(indices) == 20800
+    projected_area = (
+        np.abs(np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])[:, 2]).sum() / 2
+    )
+    assert projected_area == pytest.approx(26.0)
+    assert (areas > 0).all()

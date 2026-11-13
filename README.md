@@ -289,7 +289,7 @@ intermittent fault. The precise internal RTX race is unconfirmed; the changes ab
 remove late/default configuration windows rather than compensate with brighter lights.
 Preserve HDR light intensity/exposure, the two dome assets and ACES. Camera-height
 changes alone must not alter any of those values. Fixed captures and orbits use the
-measured body midpoint height; the orbit measures it after settling and holds it fixed.
+measured body midpoint height; the orbit tracks the live body midpoint throughout movement.
 
 Investigation logs: `outputs/log/lighting-investigation-zaMBMW.log`,
 `outputs/log/lighting-height-investigation-5dh4Gu.log`, and
@@ -422,8 +422,31 @@ is on the outward trail at approximately `(0.0725, -6.6968)` in world XY. Facing
 that landmark gives yaw `atan2(-6.6968, 0.0725) = -89.38 degrees`, with the cave behind the robot.
 Initial orientation is XYZW identity before the yaw reset; this Isaac Lab build uses XYZW quaternions.
 
-The orbit uses fixed world target XY `(0, 0)` and the robot's measured midpoint height after
-settling, with the source camera position establishing its starting azimuth. Robot movement and heading no longer change the camera path. The same 80-degree
+The orbit starts at the robot's measured midpoint after settling, with the source camera
+position establishing its starting azimuth. Each frame translates the orbit with the live
+body midpoint and aims directly at it, keeping the humanoid centered as it walks.
+Robot heading does not rotate the camera arc. The same 80-degree
 arc, radius 2.6 m and 22 mm lens are used every run. Each launch logs the actual initial position,
 quaternion and six velocity components for verification. This establishes a reproducible reference;
 the earlier unseeded videos cannot be reproduced exactly from their MP4s alone.
+
+
+Earth-8 uses a local collision mesh sampled from the visible trail substrate
+(`Mesh_0095`), replacing the former flat floor. The crop is world X [-2, 2] m,
+Y [-5, 1.5] m: the outward walking corridor plus footstep and height-scanner margin.
+The 5 cm grid contains 10,611 vertices and 20,800 triangles. Physics and the rough-H1
+height scanner both use this single invisible mesh. The remaining scenery has no
+collision cost; foliage, separate rocks, and overhangs are excluded. This is a rigid
+terrain approximation, not deformable soil or a calibrated regolith slip model.
+Rebuild with `.venv/bin/python scripts/build_earth_collision.py`; source/crop metadata
+is saved beside `earth_collision_ground.usda`. Forward-walking runs check for missing
+height rays each simulation second and stop if the scanner leaves the patch.
+Longer routes require extending the crop before recording.
+
+```bash
+mkdir -p outputs/log
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --record earth-8 --camera-motion orbit --capture-requested --kit_args=--no-window > "outputs/log/earth-8-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+```
+
+This records six seconds at 25 fps after one second of policy settling, retaining the
+80-degree eased arc, 2.6 m radius and 22 mm lens while following the moving robot.

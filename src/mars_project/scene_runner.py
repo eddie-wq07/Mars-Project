@@ -196,11 +196,16 @@ def main():
                     reset_count += int(dones.sum().item())
                 action_steps += 1
                 if args.forward_velocity and action_steps % round(1.0 / env.unwrapped.step_dt) == 0:
+                    hits = env.unwrapped.scene["height_scanner"].data.ray_hits_w.torch
+                    if not torch.isfinite(hits).all():
+                        raise RuntimeError(
+                            "Height scanner left the local collision patch; extend the trail crop before continuing"
+                        )
                     command = env.unwrapped.command_manager.get_command("base_velocity")[0].tolist()
                     position = env.unwrapped.scene["robot"].data.root_pos_w.torch[0].tolist()
                     print(
                         f"WALK_PROGRESS seconds={action_steps * env.unwrapped.step_dt:.2f} "
-                        f"command={command} position={position} resets={reset_count}",
+                        f"command={command} position={position} resets={reset_count} height_rays_finite=True",
                         flush=True,
                     )
 

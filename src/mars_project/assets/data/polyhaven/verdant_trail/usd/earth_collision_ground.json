@@ -1,0 +1,21 @@
+{
+  "source_prototype": "/Earth/VegetationAndTerrain/Prototypes/Mesh_0095",
+  "bounds_xy": [
+    [
+      -2,
+      -5
+    ],
+    [
+      2,
+      1.5
+    ]
+  ],
+  "spacing_m": 0.05,
+  "vertices": 10611,
+  "triangles": 20800,
+  "height_range_m": [
+    -0.17200144425405436,
+    0.3798651219742119
+  ],
+  "spawn_ground_z": -9.927617869288138e-06
+}
