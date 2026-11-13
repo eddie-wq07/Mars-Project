@@ -340,3 +340,13 @@ drift over five seconds. Logs: `outputs/log/policy-standing-baseline.log` and
 seeds or walking commands. Random starting velocities/yaw and mass randomization remain inherited;
 automatic resets can make a failed preview appear to jump back upright. Reproducible standing tests
 and stop-on-fall behavior remain work to do. Existing videos show the pre-fix behavior.
+
+For a cinematic six-second orbit saved alongside an existing test's video:
+
+```bash
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --record earth-test-4 --camera-motion orbit --capture-requested --kit_args=--no-window
+```
+
+Orbit mode lets the policy settle for one unrecorded simulation second, then captures an 80-degree fly-by arc (the trail's rocks and tree obstruct a full revolution)
+with eased camera speed, gentle elevation change and smoothed tracking. The MP4 has an `-orbit` filename
+suffix and stays in the test's folder. Fixed-camera recording remains the default.

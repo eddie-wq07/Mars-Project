@@ -54,6 +54,9 @@ def parse_args():
         help="Mark screenshots as explicitly requested by the user; otherwise save under date/misc",
     )
     parser.add_argument("--record", metavar="LABEL", help="Record --steps as a 25-fps MP4 in a LABEL folder")
+    parser.add_argument(
+        "--camera-motion", choices=["fixed", "orbit"], default="fixed", help="Camera motion for MP4 recording"
+    )
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
     args = parser.parse_args()
@@ -65,6 +68,8 @@ def parse_args():
         parser.error("choose one capture mode: --screenshot, --screenshot-pair, --screenshot-series, --record")
     if not 1 <= args.screenshot_count <= 26:
         parser.error("--screenshot-count must be between 1 and 26")
+    if args.camera_motion != "fixed" and not args.record:
+        parser.error("--camera-motion requires --record")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
     return args
@@ -179,6 +184,7 @@ def main():
                         env.unwrapped.step_dt,
                         args.record,
                         requested=args.screenshot_requested,
+                        camera_motion=args.camera_motion,
                     )
                     step = args.steps
                 else:
