@@ -58,6 +58,9 @@ def configure_canyon_scene(cfg):
     cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
     cfg.events.add_base_mass = None
     cfg.events.base_external_force_torque = None
+    from mars_project.environment.regolith import configure_regolith
+
+    configure_regolith(cfg)
 
 
 def add_canyon_scene():

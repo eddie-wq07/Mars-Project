@@ -126,7 +126,7 @@ flowchart TD
     earth["1. VERIFIED: Earth walking<br/>Rough-H1 command: 0.5 m/s.<br/>Six-second clip; zero resets.<br/>Terrain sensing stayed valid."]
     capture["2. READY: Ground and video<br/>Local trail collision mesh.<br/>Smooth orbit; Mac-ready MP4.<br/>Check lighting each run."]
     mars["3. READY: Local Mars terrain<br/>Mars gravity and fixed +X start.<br/>6.5 × 4 m corridor, 5 cm sampling.<br/>Matches the existing scenery surface."]
-    soil["4. ADD: Moving regolith<br/>Feet push loose sand locally.<br/>Limit physics to the corridor.<br/>Sensors must match the surface."]
+    soil["4. READY: Moving regolith<br/>Local, physically movable grains.<br/>Coarse 6 cm grain approximation.<br/>Height sensing follows live grains."]
     damping["5. ADD: Resistance settings<br/>Extra joint damping on Earth;<br/>less added damping on Mars.<br/>Approximation, not air drag.<br/>Test against original motor gains."]
     dust["6. ADD: Footstep dust<br/>Only where feet disturb sand.<br/>No global haze or dust storms.<br/>Tune drag for Mars atmosphere.<br/>Use particle-specific values."]
     test["7. TEST: Contact, then policy<br/>Press and slide a foot first.<br/>Then run H1 from a fixed start.<br/>Check slip, falls and sensing.<br/>Stop on failure."]
@@ -443,3 +443,14 @@ corridor from `scenery.usdc`. Bounds are X [-1.5, 5], Y [-2, 2] metres;
 unmeasured small-scale terrain. Metadata and a height grid accompany the USD.
 A fresh simulator check without a checkpoint verified loading, a fixed start and
 rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
+
+
+Mars step 4 adds 1,782 independently colliding spheres (3 cm radius) in a shallow
+local layer, X [-0.6, 4.4], Y [-0.65, 0.66] m. This is a coarse granular contact
+approximation, not calibrated fine sand or a continuum sinkage model. Grain angular
+damping approximates rolling resistance; it is separate from atmospheric drag.
+The grains share one USD asset for efficient spawning. The height observation combines
+static terrain rays with analytic intersections against live grain positions; episode
+reset restores the bed. Rebuild with `.venv/bin/python scripts/build_mars_regolith.py`.
+Use `/home/eddie/env_isaaclab/bin/python scripts/check_regolith.py --kit_args=--no-window`
+for the no-policy loaded-foot drop/slide/reset check (redirect logs into `outputs/log/`).

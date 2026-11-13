@@ -24,6 +24,8 @@ def validate_assets(appearance: str) -> None:
                 "rock_normal.png",
                 "roughness.png",
                 "sky.png",
+                "local_ground.npz",
+                "regolith.usdc",
             )
         )
     )
