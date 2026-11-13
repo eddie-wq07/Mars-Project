@@ -37,7 +37,20 @@ def apply_earth_render_settings():
     settings = carb.settings.get_settings()
     for name, value in EARTH_RENDER_SETTINGS.items():
         settings.set(name, value)
-    print("Earth: source HDRI and light atmospheric scattering.", flush=True)
+    from omni.kit.viewport.utility import get_active_viewport
+
+    from isaaclab.sim.utils.stage import get_current_stage
+
+    from mars_project.scenes.cameras import apply_view_settings
+
+    # Initialize the existing view BEFORE env.reset() renders and the runner switches cameras.
+    # Preserve the earlier Earth initialization sequence as well as the final view settings.
+    # Keep the later application too, so the final camera has explicit exposure settings.
+    viewport = get_active_viewport()
+    if viewport is None:
+        raise RuntimeError("Earth appearance requires a Kit viewport")
+    apply_view_settings(get_current_stage(), viewport.camera_path, viewport.render_product_path)
+    print("Earth: source HDRI and light atmospheric scattering; initial view settings applied.", flush=True)
 
 
 def configure_earth_scene(cfg):

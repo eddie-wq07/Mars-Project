@@ -257,3 +257,12 @@ A is captured after 50 control steps (1 simulation second), B after another 50 s
 Render warmup does not advance physics. Files are saved under `outputs/screenshots/MM-DD-YYYY/earth-test/`
 as `h:mmam_earth-test-A.png` and `h:mmam_earth-test-B.png` (using the actual capture time).
 The policy still receives a zero velocity command.
+
+Earth rendering initialization (2026-11-13): apply shared exposure/tonemapping settings to the initial
+viewport, render three frames without stepping physics, then reset and select/configure the final camera.
+The `cd5998a` refactor removed the early application. Reinstating the call alone produced both bright
+and dark runs, so initialization timing is suspected rather than a changed exposure value. The explicit
+render updates allow Kit to consume the initial-view changes before the camera switch. Keep original
+HDR lighting, sky, exposure and tonemapping values. A fixed-state sky-dome toggle did not establish a
+two-dome conflict. The exact internal RTX mechanism is not confirmed; verify rendered output after
+future renderer or startup changes.

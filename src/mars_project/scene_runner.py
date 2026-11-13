@@ -90,6 +90,9 @@ def main():
                 from mars_project.scenes.earth import add_earth_scene, apply_earth_render_settings
 
                 apply_earth_render_settings()
+                # Let Kit consume initial-view USD/settings changes before reset/camera switching.
+                for _ in range(3):
+                    env.unwrapped.sim.render()
                 add_earth_scene()
             if args.appearance == "grand-canyon":
                 from mars_project.scenes.canyon import add_canyon_scene
