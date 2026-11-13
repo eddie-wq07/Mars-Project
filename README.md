@@ -337,9 +337,8 @@ five terminations/automatic respawns in 250 control steps with the quad, versus 
 The corrected test had 187/187 finite height rays at each sampled check and roughly 0.28 m horizontal
 drift over five seconds. Logs: `outputs/log/policy-standing-baseline.log` and
 `outputs/log/policy-standing-triangulated.log`. This is a short diagnostic result, not validation across
-seeds or walking commands. Random starting velocities/yaw and mass randomization remain inherited;
-automatic resets can make a failed preview appear to jump back upright. Reproducible standing tests
-and stop-on-fall behavior remain work to do. Existing videos show the pre-fix behavior.
+seeds or walking commands. At the time of that diagnostic, random starting velocities/yaw and mass randomization remained inherited;
+automatic resets can make a failed preview appear to jump back upright. Earth now has a reproducible standing setup; stop-on-fall behavior remains work to do. Existing videos show the pre-fix behavior.
 
 For a cinematic six-second orbit saved alongside an existing test's video:
 
@@ -348,5 +347,17 @@ For a cinematic six-second orbit saved alongside an existing test's video:
 ```
 
 Orbit mode lets the policy settle for one unrecorded simulation second, then captures an 80-degree fly-by arc (the trail's rocks and tree obstruct a full revolution)
-with eased camera speed, gentle elevation change and smoothed tracking. The MP4 has an `-orbit` filename
+with eased camera speed, gentle elevation change and a fixed world-space target. The MP4 has an `-orbit` filename
 suffix and stays in the test's folder. Fixed-camera recording remains the default.
+
+Earth outward-facing setup: spawn is fixed at `(0, 0, 1.05)` with zero root/joint velocities,
+fixed default joint positions, seed 42, and no torso-mass randomization. The source scene camera
+is on the outward trail at approximately `(0.0725, -6.6968)` in world XY. Facing from the spawn toward
+that landmark gives yaw `atan2(-6.6968, 0.0725) = -89.38 degrees`, with the cave behind the robot.
+Initial orientation is XYZW identity before the yaw reset; this Isaac Lab build uses XYZW quaternions.
+
+The orbit now uses fixed world target `(0, 0, 0.95)` and the source camera position to establish its
+starting azimuth. Robot movement and heading no longer change the camera path. The same 80-degree
+arc, radius 2.6 m and 22 mm lens are used every run. Each launch logs the actual initial position,
+quaternion and six velocity components for verification. This establishes a reproducible reference;
+the earlier unseeded videos cannot be reproduced exactly from their MP4s alone.

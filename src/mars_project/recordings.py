@@ -8,7 +8,18 @@ from tempfile import TemporaryDirectory
 from mars_project.screenshots import capture_frame, frame_robot, screenshot_path
 
 
-def record_video(sim, robot, action_step, steps, step_dt, label, *, requested=False, camera_motion="fixed"):
+def record_video(
+    sim,
+    robot,
+    action_step,
+    steps,
+    step_dt,
+    label,
+    *,
+    requested=False,
+    camera_motion="fixed",
+    camera_target=(0.0, 0.0, 0.95),
+):
     import imageio_ffmpeg
     from omni.kit.viewport.utility import get_active_viewport
 
@@ -33,8 +44,8 @@ def record_video(sim, robot, action_step, steps, step_dt, label, *, requested=Fa
         # Let the policy settle for one unrecorded second before the six-second shot.
         for _ in range(round(1.0 / step_dt)):
             action_step()
-        orbit = OrbitCamera(stage, viewport.camera_path, robot)
-        orbit.update(0.0, robot)
+        orbit = OrbitCamera(stage, viewport.camera_path, camera_target)
+        orbit.update(0.0)
     for _ in range(60):
         sim.render()
     with TemporaryDirectory(prefix="mars-video-") as temporary:
@@ -45,7 +56,7 @@ def record_video(sim, robot, action_step, steps, step_dt, label, *, requested=Fa
                     raise RuntimeError("Simulation closed before recording finished")
                 action_step()
             if orbit is not None:
-                orbit.update(index / max(1, steps // stride - 1), robot)
+                orbit.update(index / max(1, steps // stride - 1))
                 # Render the moved camera before scheduling its frame capture.
                 sim.render()
             capture_frame(sim, viewport, frames / f"{index:06d}.png")
@@ -82,24 +93,21 @@ def record_video(sim, robot, action_step, steps, step_dt, label, *, requested=Fa
 
 
 class OrbitCamera:
-    """A smooth cinematic arc, with eased speed, a gentle rise and smoothed subject tracking."""
+    """A repeatable world-space cinematic arc independent of robot pose or motion."""
 
-    def __init__(self, stage, camera_path, robot):
+    def __init__(self, stage, camera_path, camera_target):
         from pxr import UsdGeom
 
         self.camera = UsdGeom.Camera(stage.GetPrimAtPath(camera_path))
         self.transform = UsdGeom.Xformable(self.camera).GetOrderedXformOps()[0]
-        self.center = robot.data.root_pos_w.torch[0].detach().cpu().tolist()
+        self.center = tuple(camera_target)
         original_eye = self.transform.Get().ExtractTranslation()
         self.start_angle = math.atan2(original_eye[1] - self.center[1], original_eye[0] - self.center[0])
         self.camera.GetFocalLengthAttr().Set(22.0)
 
-    def update(self, progress, robot):
+    def update(self, progress):
         from pxr import Gf
 
-        live = robot.data.root_pos_w.torch[0].detach().cpu().tolist()
-        for axis in range(3):
-            self.center[axis] += 0.08 * (live[axis] - self.center[axis])
         eased = progress * progress * (3.0 - 2.0 * progress)
         angle = self.start_angle + math.radians(-20.0 + 80.0 * eased)
         target = Gf.Vec3d(*self.center)

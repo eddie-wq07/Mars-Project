@@ -1,6 +1,7 @@
 """Configure the standalone, visual-only Verdant Trail preview before physics starts."""
 
 import json
+import math
 
 from mars_project.assets.scene_paths import EARTH_DIR
 
@@ -81,6 +82,21 @@ def configure_earth_scene(cfg):
     camera = look["camera"]
     forward = tuple(-camera["matrix"][axis][2] for axis in range(3))
     source_eye = tuple(camera["position"][axis] - anchor[axis] for axis in range(3))
+    # The source camera sits on the outward trail, looking into the cave.
+    # Face from the fixed spawn toward that landmark, not an arbitrary world yaw.
+    cfg.seed = 42
+    cfg.scene.robot.init_state.pos = (0.0, 0.0, 1.05)
+    cfg.scene.robot.init_state.rot = (0.0, 0.0, 0.0, 1.0)  # Isaac Lab uses xyzw
+    outward_yaw = math.atan2(source_eye[1], source_eye[0])
+    cfg.events.reset_base.params["pose_range"] = {"yaw": (outward_yaw, outward_yaw)}
+    cfg.events.reset_base.params["velocity_range"] = {}
+    cfg.scene.robot.init_state.lin_vel = (0.0, 0.0, 0.0)
+    cfg.scene.robot.init_state.ang_vel = (0.0, 0.0, 0.0)
+    cfg.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+    cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+    cfg.events.add_base_mass = None
+    cfg.events.base_external_force_torque = None
+    print(f"EARTH_SPAWN position={cfg.scene.robot.init_state.pos} outward_yaw_deg={math.degrees(outward_yaw):.3f}")
     # Match the source camera near 19 seconds (frame 457 at 24 fps).
     eye = source_eye
     lookat = tuple(source_eye[axis] + 6.0 * forward[axis] for axis in range(3))

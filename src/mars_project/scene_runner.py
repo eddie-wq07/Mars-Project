@@ -117,6 +117,13 @@ def main():
 
                 add_canyon_scene()
             env.reset()
+            robot_data = env.unwrapped.scene["robot"].data
+            print(
+                f"INITIAL_ROBOT position={robot_data.root_pos_w.torch[0].tolist()} "
+                f"quaternion_xyzw={robot_data.root_quat_w.torch[0].tolist()} "
+                f"velocity={robot_data.root_vel_w.torch[0].tolist()}",
+                flush=True,
+            )
             import carb.settings
 
             carb.settings.get_settings().set("/rtx/rendermode", "RealTimePathTracing")
@@ -185,6 +192,11 @@ def main():
                         args.record,
                         requested=args.screenshot_requested,
                         camera_motion=args.camera_motion,
+                        camera_target=(
+                            cfg.scene.robot.init_state.pos[0],
+                            cfg.scene.robot.init_state.pos[1],
+                            cfg.scene.robot.init_state.pos[2] - 0.1,
+                        ),
                     )
                     step = args.steps
                 else:
