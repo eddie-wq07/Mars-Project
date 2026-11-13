@@ -1,5 +1,7 @@
 """Check the standalone project's Gymnasium registration."""
+
 import gymnasium as gym
+
 import mars_project.tasks.h1  # noqa: F401
 
 

@@ -1,116 +1,94 @@
-# mars_project
+# Vision for Project: Mars-Project
 
-An installable downstream Isaac Lab task package with a standard uv `src` layout.
+Run one pretrained H1 walking policy on Earth and Mars, then compare outcomes.
 
-No tasks are registered yet. Add task packages under `src/mars_project/tasks` and register them with Gymnasium.
+## End goal
 
+1. **Earth:** Walk straight for roughly 5–10 footsteps in the Poly Haven scene.
+2. **Mars:** Run the same checkpoint with Mars gravity and, later, dust, reduced drag, and loose regolith.
+3. **Findings:** Compare success over 100 trajectories per environment using the same target distance.
+4. **Recording:** Save short videos for visual iteration, then produce final comparison footage.
 
-## Installation
+## Current state
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then create the project environment. The default
-environment uses the Newton backend and does not install Isaac Sim:
+The repository cleanup is complete. The next implementation is a fixed-command, timed rollout with video recording.
+A successful walking run or recording has **not** been verified.
+
+| Area | Implemented | Still needed |
+| --- | --- | --- |
+| Robot/task | One `Mars-Project-H1` task inherits Isaac Lab's H1 observations, actions, rewards and PPO configuration. | Verify the cached checkpoint matches the installed task and produces stable walking. |
+| Policy | Cached pretrained RSL-RL checkpoint; runner can load it with `--checkpoint`. Without one, it sends zero actions. | Make checkpoint inference the normal walking workflow; no new training is planned. |
+| Movement | Preview holds forward, lateral and yaw velocity commands at zero; pushes and observation noise are disabled. | Set a constant forward speed, zero lateral/yaw commands, disable standing-command sampling, and control initial pose/velocity and randomization. |
+| Duration | `--steps N` bounds environment control steps; `0` runs until closed. | Add a 5–7 **simulation-second** duration using `env.step_dt`; stop on falling instead of silently continuing through resets. Control steps are not footsteps. |
+| Earth | Packaged Verdant Trail USD, collision ground, scene camera and active lighting/exposure setup. | Restore textures: the cleanup audit found all 128 referenced textures were Git LFS pointers. Check sky, ground contact and framing in a rendered run. |
+| Mars | Optimized canyon scenery, rigid collision mesh, sky/sun lighting and selectable −3.71 m/s² gravity (Earth: −9.81). | Dust, explicit drag changes and deformable/loose regolith are absent. Current canyon is a rigid visual/terrain approximation. |
+| Camera/video | One fixed camera; no keyboard control or camera animation. | Add offscreen rendering over SSH, frame capture and MP4 encoding; save to `/home/eddie/Desktop/` and verify playback, framing and duration. No video was produced by this cleanup. |
+| Evaluation | Existing environment termination signals are available. | Log distance, elapsed simulation time and falls; define success and target distance; run 100 seeded trajectories per environment and export results. |
+
+Start with a **6-second rollout**, rather than footstep counting. Counting 5–10 actual footsteps needs additional
+contact-event logic. A timed preview also does not replace the shared-distance criterion for the final evaluation.
+
+## Cleanup performed
+
+- Removed disconnected WASD controls and the separate stand-up training task.
+- Removed the broken `play_mars.py` shortcut and redundant environment-listing wrapper; `scripts/view_scene.py` is the sole launcher.
+- Removed robot POV, orbit controls and the unused Earth dome-orientation helper; retained active sky, exposure and lighting logic.
+- Removed the offline canyon builder, original USDZ, intermediate preview mesh and anchor; kept optimized runtime assets and source/build metadata. Rebuilding from raw sources now requires restoring the builder and inputs from version history/source provenance.
+- Removed outdated planning/architecture documents; this README describes the current structure and next work.
+- Kept every texture referenced by the active USD scenes. Asset validation now checks referenced dependencies for missing files and LFS pointers before simulation startup.
+- Kept the pretrained checkpoint cache locally and added it to `.gitignore`.
+
+## Remaining implementation order
+
+1. Restore LFS scene content and verify checkpoint loading and the fixed camera in a short rendered smoke run.
+2. Add constant forward motion, reproducible resets, a 6-second limit and stop-on-fall behavior.
+3. Add offscreen MP4 capture to the desktop for viewing after an SSH run; inspect the first Earth clip and iterate.
+4. Repeat with the same checkpoint on Mars; then add metrics, repeated trials and the extra environmental physics.
+
+## Run the existing preview
+
+Use the existing Isaac Sim environment from the project root:
 
 ```bash
-uv sync
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --gravity mars --steps 300
 ```
 
-This project's `pyproject.toml` uses editable relative paths to an Isaac Lab source checkout. Update
-`[tool.uv.sources]` if either directory moves.
+These are stationary previews unless `--checkpoint /absolute/path/to/checkpoint.pt` is supplied;
+even with a checkpoint the current velocity command is zero. They use a Kit viewport and are **not yet an
+SSH/offscreen recording workflow**. `--steps 300` means 300 control steps, not 300 footsteps or a guaranteed video duration.
 
-The project forwards every optional extra declared by the Isaac Lab package used to create it, including physics,
-rendering, visualizer, RL, teleoperation, and development features. Inspect `pyproject.toml` for the complete list and
-pass each required extra to `uv run`:
-
-```bash
-# Standalone OV PhysX
-uv run --extra ovphysx isaaclab random_agent --task <TASK_NAME> physics=ovphysx
-
-# Isaac Sim with PhysX and RTX rendering
-uv run --extra isaacsim isaaclab random_agent --task <TASK_NAME> physics=isaacsim_physx
-
-# Isaac Sim with the Rerun visualizer
-uv run --extra isaacsim --extra rerun isaaclab random_agent --task <TASK_NAME> --viz rerun
-```
-
-The `all` extra forwards Isaac Lab's `all` selection. The `ov` extra installs both the `ovphysx` and `ovrtx` runtimes;
-you can also select either independently. Commit `pyproject.toml` and `uv.lock` so collaborators use the same
-environment.
-
-## Run the tasks
-
-After registering a task, list it with:
-
-```bash
-uv run isaaclab list_envs --show_presets
-```
+Restore missing LFS content from a configured remote with `git lfs pull`, or use `git lfs checkout` when the objects
+are already cached. Validation reports missing/unhydrated assets before launching the simulator.
 
 ## Project structure
 
-Add task packages under `src/mars_project/tasks`. Import each task package from that directory so its Gymnasium
-registrations load through the project's `isaaclab.tasks` entry point.
-
-## Project assets
-
-Keep project-owned USD files and related data under `src/mars_project/assets/data`. The asset module exposes a
-stable path that works from an editable checkout and an installed wheel:
-
-```python
-from mars_project.assets import MARS_PROJECT_ASSETS_DIR
-
-robot_usd_path = MARS_PROJECT_ASSETS_DIR / "robots" / "my_robot.usd"
+```text
+scripts/view_scene.py             Single CLI entry point
+src/mars_project/
+  scene_runner.py                CLI, simulator lifecycle, checkpoint inference and stepping
+  tasks/h1.py                    H1 environment/PPO configuration and Gym registration
+  scenes/setup.py                Stationary preview configuration and scene selection
+  scenes/earth.py                Earth geometry, lighting and rendering settings
+  scenes/canyon.py               Canyon geometry, collision and lighting
+  scenes/cameras.py              One fixed camera
+  assets/scene_paths.py          Runtime paths and USD dependency validation
+  assets/data/                  Packaged runtime assets and provenance
+tests/                          Registration and asset-validation checks
 ```
 
-Keep asset configuration in the `mars_project.assets` package and pass `str(robot_usd_path)` to configuration fields that
-expect a string. USD files are configured for Git LFS by the project's `.gitattributes`; install Git LFS before adding
-large binary assets.
+`h1.py` defines **what environment the policy controls**. `scene_runner.py` defines **how to launch and step it**.
+Both are needed; there is no second stand-up task or keyboard-control module.
 
-## Development
+## Environment and checks
 
-Run the registration test and code-quality checks through the project environment:
+`pyproject.toml` and `uv.lock` describe the environment and editable Isaac Lab dependencies under
+`/home/eddie/IsaacLab`. Update `[tool.uv.sources]` if that checkout moves. `uv sync` defaults to Newton;
+this project's scene runner explicitly uses Isaac Sim PhysX and Kit, available in the existing interpreter above.
+The optional dependency extras remain available for Isaac Lab compatibility.
 
 ```bash
-uv run pytest
-uv run pre-commit run --all-files
+.venv/bin/python -m pytest -q
 ```
 
-The test helpers under `source/isaaclab_tasks/test` in the Isaac Lab repository are not part of the installed
-`isaaclab_tasks` package. Keep test fixtures in this project and use public Isaac Lab APIs. If you copy
-`env_test_utils.py`, it becomes vendored code whose upstream changes you must track.
-
-To configure VS Code or Cursor, run the `setup_python_env` task or invoke its command directly:
-
-```bash
-uv run isaaclab --editor
-```
-
-The setup command selects the active interpreter and writes a git-ignored `pyrightconfig.json`. The resulting
-configuration inherits the project's checked-in Pyright settings and adds the Isaac Sim extensions, project `src` root,
-and any Isaac Lab packages discovered in the active Python environment. This supports both Pylance in VS Code and
-basedpyright in Cursor.
-
-In VS Code, use Pylance and select the interpreter that ran the setup command. In Cursor, install the
-[basedpyright extension](https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright) instead of
-Pylance, select the same interpreter, and reload the window. Both language servers read `pyrightconfig.json`.
-
-When using the `isaacsim` extra, include it while generating the editor configuration so the command can discover the
-Isaac Sim installation:
-
-```bash
-uv run --extra isaacsim isaaclab --editor
-```
-
-For an Isaac Sim binaries installation that is not available in the project environment, provide its path explicitly:
-
-```bash
-# Linux
-uv run isaaclab --editor --isaac_path <isaac-sim-path>
-
-# Windows
-uv run isaaclab --editor --isaac_path <isaac-sim-path>
-```
-
-## Troubleshooting
-
-If Pylance or basedpyright cannot resolve modules, confirm that the selected interpreter matches the one used to run the
-setup command, then reload the editor window. To add a missing extension or reduce indexing memory, edit the `extraPaths`
-array in the root `pyrightconfig.json`; remove simulator extension directories that the project does not use.
+The tests check registration and asset validation; they do not establish walking stability or rendering correctness.

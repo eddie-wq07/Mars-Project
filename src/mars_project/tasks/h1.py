@@ -1,11 +1,16 @@
 """H1 flat-ground locomotion, inheriting NVIDIA's scene and MDP terms.
 
 Robot, observations, actions, rewards, resets and terminations come from
-H1FlatEnvCfg. Only gravity is changed for training; preview settings below
-are applied exclusively by the preview script.
+H1FlatEnvCfg. The runner selects gravity and applies scene/preview settings separately.
 """
+
+import gymnasium as gym
+
 from isaaclab.utils import configclass
+
+from isaaclab_tasks.core.velocity.config.h1.agents.rsl_rl_ppo_cfg import H1FlatPPORunnerCfg
 from isaaclab_tasks.core.velocity.config.h1.flat_env_cfg import H1FlatEnvCfg
+
 
 @configclass
 class MarsH1EnvCfg(H1FlatEnvCfg):
@@ -15,18 +20,12 @@ class MarsH1EnvCfg(H1FlatEnvCfg):
         self.sim.physics.default = self.sim.physics.isaacsim_physx
 
 
-
-"""Reuse NVIDIA's H1 PPO settings; keep project runs together."""
-from isaaclab.utils import configclass
-from isaaclab_tasks.core.velocity.config.h1.agents.rsl_rl_ppo_cfg import H1FlatPPORunnerCfg
-
 @configclass
 class MarsH1PPORunnerCfg(H1FlatPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
         self.experiment_name = "mars_h1"
 
-import gymnasium as gym
 
 gym.register(
     id="Mars-Project-H1",

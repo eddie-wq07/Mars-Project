@@ -4,8 +4,9 @@ Run with an Isaac Sim Python environment:
     python scripts/view_scene.py --appearance earth
     python scripts/view_scene.py --appearance grand-canyon
 """
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from mars_project.scene_runner import main
