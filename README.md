@@ -235,13 +235,13 @@ The tests check registration and asset validation; they do not establish walking
 Save a PNG at the viewport render resolution (opens in macOS Preview), grouped into Vancouver-date folders with 12-hour time and a descriptive label in its filename:
 
 ```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --steps 1 --screenshot --kit_args=--no-window
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --steps 1 --screenshot --screenshot-requested --kit_args=--no-window
 ```
 
 Screenshots are opt-in: normal runs capture nothing. The command above runs one control step, followed by
 60 render-only warmup frames and capture. `--screenshot` requires a positive `--steps` limit.
 Use `--screenshot earth-restored` to choose a label; the default label is the scene appearance.
-Files go to `outputs/screenshots/MM-DD-YYYY/h:mmam_label.png` using an underscore before the label,
+For explicitly requested captures, add `--screenshot-requested`. Files go to `outputs/screenshots/MM-DD-YYYY/h:mmam_label.png` using an underscore before the label,
 for example `11-12-2026/8:21pm_earth-restored.png`. Repeated labels within the same minute receive `-2`, `-3`, etc.
 Use `--appearance earth`, `--steps N`, or `--checkpoint /path/to/policy.pt` to override preview settings.
 The no-window option still requires an NVIDIA GPU and the Kit renderer; it captures the rendered viewport, not the desktop UI.
@@ -250,7 +250,7 @@ The canyon uses our generated orange sky/sun texture; the separate directional l
 Capture two policy-playback frames one simulation second apart (same camera framing):
 
 ```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 50 --checkpoint .pretrained_checkpoints/h1_rough.pt --screenshot-pair earth-test --kit_args=--no-window
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 50 --checkpoint .pretrained_checkpoints/h1_rough.pt --screenshot-pair earth-test --screenshot-requested --kit_args=--no-window
 ```
 
 A is captured after 50 control steps (1 simulation second), B after another 50 steps.
@@ -266,3 +266,11 @@ render updates allow Kit to consume the initial-view changes before the camera s
 HDR lighting, sky, exposure and tonemapping values. A fixed-state sky-dome toggle did not establish a
 two-dome conflict. The exact internal RTX mechanism is not confirmed; verify rendered output after
 future renderer or startup changes.
+
+Screenshot organization: captures made for diagnostics or verification without an explicit user request
+must go in `outputs/screenshots/MM-DD-YYYY/misc/`. This is the default for both single captures and
+pairs, including Python calls to `capture_screenshot()`. Use `--screenshot-requested` (Python:
+`requested=True`) only when the user explicitly asks for screenshots. Requested pairs use their label
+folder; diagnostic pairs both go directly in `misc/`. Date, timestamp, labels and collision avoidance
+work the same in either destination. A request to diagnose or fix something is not itself a request
+for screenshots.

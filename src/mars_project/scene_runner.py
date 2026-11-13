@@ -43,6 +43,11 @@ def parse_args():
         metavar="LABEL",
         help="Capture LABEL-A after --steps and LABEL-B one simulation second later, in a LABEL subfolder",
     )
+    parser.add_argument(
+        "--screenshot-requested",
+        action="store_true",
+        help="Mark screenshots as explicitly requested by the user; otherwise save under date/misc",
+    )
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
     args = parser.parse_args()
@@ -169,6 +174,7 @@ def main():
                     env.unwrapped.scene["robot"],
                     f"{args.screenshot_pair}-A",
                     subfolder=args.screenshot_pair,
+                    requested=args.screenshot_requested,
                 )
                 with torch.inference_mode():
                     for _ in range(interval_steps):
@@ -179,6 +185,7 @@ def main():
                     env.unwrapped.scene["robot"],
                     f"{args.screenshot_pair}-B",
                     subfolder=args.screenshot_pair,
+                    requested=args.screenshot_requested,
                     reframe=False,
                 )
                 print(f"SCREENSHOT_PAIR interval_seconds=1.0 interval_steps={interval_steps}", flush=True)
@@ -189,6 +196,7 @@ def main():
                     env.unwrapped.sim,
                     env.unwrapped.scene["robot"],
                     args.appearance if args.screenshot is True else args.screenshot,
+                    requested=args.screenshot_requested,
                 )
             if args.steps:
                 print(f"PREVIEW_OK steps={step}")

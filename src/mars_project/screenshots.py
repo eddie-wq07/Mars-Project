@@ -8,8 +8,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 
-def screenshot_path(label: str, taken_at: datetime | None = None, subfolder: str | None = None) -> Path:
-    """Group captures by Vancouver date; name by time and label without overwriting."""
+def screenshot_path(
+    label: str, taken_at: datetime | None = None, subfolder: str | None = None, *, requested: bool = False
+) -> Path:
+    """Route unsolicited captures to date/misc; preserve requested destinations and avoid overwrites."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", label):
         raise ValueError("Screenshot label must contain only letters, numbers, hyphens or underscores")
     taken_at = taken_at or datetime.now(ZoneInfo("America/Vancouver"))
@@ -17,6 +19,8 @@ def screenshot_path(label: str, taken_at: datetime | None = None, subfolder: str
     period = "am" if taken_at.hour < 12 else "pm"
     stamp = f"{hour}:{taken_at:%M}{period}"
     folder = Path(__file__).resolve().parents[2] / "outputs" / "screenshots" / f"{taken_at:%m-%d-%Y}"
+    if not requested:
+        subfolder = "misc"
     if subfolder:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", subfolder):
             raise ValueError("Screenshot subfolder must be a single folder name")
@@ -57,7 +61,7 @@ def frame_robot(stage, camera_path, robot):
     xform.GetOrderedXformOps()[0].Set(matrix)
 
 
-def capture_screenshot(sim, robot, label: str = "render", *, subfolder=None, reframe=True):
+def capture_screenshot(sim, robot, label: str = "render", *, subfolder=None, reframe=True, requested=False):
     from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
 
     viewport = get_active_viewport()
@@ -71,7 +75,7 @@ def capture_screenshot(sim, robot, label: str = "render", *, subfolder=None, ref
     # Render without advancing physics while textures and lighting settle.
     for _ in range(60):
         sim.render()
-    output = screenshot_path(label, subfolder=subfolder)
+    output = screenshot_path(label, subfolder=subfolder, requested=requested)
     output.parent.mkdir(parents=True, exist_ok=True)
     capture = capture_viewport_to_file(viewport, str(output))
     pending = asyncio.ensure_future(capture.wait_for_result())
