@@ -119,7 +119,7 @@ observations, rewards and episode resets. The project runner does not implement 
 
 ## Current state
 
-Cleanup is complete. **Walking stability and video recording are not yet verified.**
+Cleanup is complete. **Walking stability is not yet verified. MP4 recording is implemented.**
 Green = code/assets present, amber = blocked or needs verification, blue = implementation still needed.
 
 ```mermaid
@@ -132,7 +132,7 @@ flowchart TD
     loop["5. PRESENT: action_step() + env.step() loop<br/>Velocity commands currently zero<br/>--steps limits control steps; 0 runs until closed"]
     walk["6. ADD: constant forward command + reproducible start<br/>Zero lateral/yaw commands; disable standing sampling<br/>Control reset pose, velocity and randomization<br/>Use pretrained inference by default; no new training"]
     timing["7. ADD: 6 simulation-second limit using env.step_dt<br/>Stop on fall; avoid continuing through episode resets"]
-    video["8. ADD: offscreen rendering + frame capture + MP4<br/>Save to /home/eddie/Desktop/ for viewing after SSH runs<br/>Verify playback, framing and duration"]
+    video["8. IMPLEMENTED: offscreen frame capture + H.264 MP4<br/>Save to outputs/recordings for download after SSH runs<br/>Verify motion and framing for each run"]
     iterate["9. NEXT MILESTONE: inspect first Earth walking clip<br/>Then repeat on Mars with the same checkpoint"]
     physics["10. LATER: Mars environmental physics<br/>Dust, reduced drag and loose regolith are absent"]
     evaluation["11. LATER: evaluation and exported results<br/>Define shared distance and success criteria<br/>Log distance, simulation time and falls<br/>Run 100 seeded trajectories per environment"]
@@ -147,13 +147,13 @@ flowchart TD
     classDef present fill:#dcfce7,stroke:#16a34a,color:#14532d;
     classDef verify fill:#fef3c7,stroke:#d97706,color:#78350f;
     classDef todo fill:#dbeafe,stroke:#2563eb,color:#172554;
-    class base,mars,loop present;
+    class base,mars,loop,video present;
     class earth,camera,policy verify;
-    class walk,timing,video,iterate,physics,evaluation todo;
+    class walk,timing,iterate,physics,evaluation todo;
 ```
 
 **Control steps ≠ footsteps.** Counting 5–10 footsteps requires contact-event logic; start with a 6-second clip.
-The final comparison still needs a shared walking distance. No video has been produced yet.
+The final comparison still needs a shared walking distance. MP4 clips are supported by `--record`; these previews still use zero commanded velocity.
 
 ## Cleanup performed
 
@@ -169,7 +169,7 @@ The final comparison still needs a shared walking distance. No video has been pr
 
 1. Checkpoint loading and short policy playback are verified. Inspect camera framing and ground contact during the first walking clip.
 2. Add constant forward motion, reproducible resets, a 6-second limit and stop-on-fall behavior.
-3. Add offscreen MP4 capture to the desktop for viewing after an SSH run; inspect the first Earth clip and iterate.
+3. MP4 capture is implemented; inspect Earth policy clips and iterate on stability and framing.
 4. Repeat with the same checkpoint on Mars; then add metrics, repeated trials and the extra environmental physics.
 
 ## Run the existing preview
@@ -182,8 +182,7 @@ Use the existing Isaac Sim environment from the project root:
 ```
 
 These are stationary previews unless `--checkpoint /absolute/path/to/checkpoint.pt` is supplied;
-even with a checkpoint the current velocity command is zero. They use a Kit viewport and are **not yet an
-SSH/offscreen recording workflow**. `--steps 300` means 300 control steps, not 300 footsteps or a guaranteed video duration.
+even with a checkpoint the current velocity command is zero. They use a Kit viewport. Add `--record LABEL --kit_args=--no-window` for offscreen recording over SSH. `--steps 300` means 300 control steps, not 300 footsteps or a guaranteed video duration.
 
 Run the cached rough-H1 policy (zero commanded velocity, five control steps):
 
@@ -241,7 +240,7 @@ Save a PNG at the viewport render resolution (opens in macOS Preview), grouped i
 Screenshots are opt-in: normal runs capture nothing. The command above runs one control step, followed by
 60 render-only warmup frames and capture. `--screenshot` requires a positive `--steps` limit.
 Use `--screenshot earth-restored` to choose a label; the default label is the scene appearance.
-For explicitly requested captures, add `--screenshot-requested`. Files go to `outputs/screenshots/MM-DD-YYYY/h:mmam_label.png` using an underscore before the label,
+For explicitly requested captures, add `--screenshot-requested`. Files go to `outputs/recordings/MM-DD-YYYY/h:mmam_label.png` using an underscore before the label,
 for example `11-12-2026/8:21pm_earth-restored.png`. Repeated labels within the same minute receive `-2`, `-3`, etc.
 Use `--appearance earth`, `--steps N`, or `--checkpoint /path/to/policy.pt` to override preview settings.
 The no-window option still requires an NVIDIA GPU and the Kit renderer; it captures the rendered viewport, not the desktop UI.
@@ -254,7 +253,7 @@ Capture two policy-playback frames one simulation second apart (same camera fram
 ```
 
 A is captured after 50 control steps (1 simulation second), B after another 50 steps.
-Render warmup does not advance physics. Files are saved under `outputs/screenshots/MM-DD-YYYY/earth-test/`
+Render warmup does not advance physics. Files are saved under `outputs/recordings/MM-DD-YYYY/earth-test/`
 as `h:mmam_earth-test-A.png` and `h:mmam_earth-test-B.png` (using the actual capture time).
 The policy still receives a zero velocity command.
 
@@ -268,9 +267,55 @@ two-dome conflict. The exact internal RTX mechanism is not confirmed; verify ren
 future renderer or startup changes.
 
 Screenshot organization: captures made for diagnostics or verification without an explicit user request
-must go in `outputs/screenshots/MM-DD-YYYY/misc/`. This is the default for both single captures and
+must go in `outputs/recordings/MM-DD-YYYY/misc/`. This is the default for both single captures and
 pairs, including Python calls to `capture_screenshot()`. Use `--screenshot-requested` (Python:
 `requested=True`) only when the user explicitly asks for screenshots. Requested pairs use their label
 folder; diagnostic pairs both go directly in `misc/`. Date, timestamp, labels and collision avoidance
 work the same in either destination. A request to diagnose or fix something is not itself a request
 for screenshots.
+
+## Output organization
+
+- `outputs/log/`: all `.log` files from runs, smoke checks and diagnostics.
+- `outputs/lighting/`: standalone lighting comparisons, sky images and render PNG assets.
+- `outputs/recordings/MM-DD-YYYY/`: screenshot-pipeline captures; unsolicited diagnostic captures go in `misc/`, while explicitly requested captures retain their requested grouping.
+
+Keep the `outputs/` root free of loose logs and PNG files. These conventions are also recorded in
+`AGENTS.md` for future work. For example, run a policy smoke check with its log in the correct folder:
+
+```bash
+mkdir -p outputs/log
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 5 --checkpoint .pretrained_checkpoints/h1_rough.pt --kit_args=--no-window > "outputs/log/earth-playback-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+```
+
+For five requested policy captures at simulation seconds 1–5, labeled A–E, use:
+
+```bash
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 50 --checkpoint .pretrained_checkpoints/h1_rough.pt --screenshot-series earth-test-2 --screenshot-count 5 --screenshot-requested --kit_args=--no-window
+```
+
+The series keeps the first capture's camera framing. Rendering pauses physics between captures;
+the interval is simulation time. The normal environment reset behavior still applies.
+
+## Record an MP4 over SSH
+
+Install the encoder helper in the Isaac Sim interpreter once:
+
+```bash
+uv pip install --python /home/eddie/env_isaaclab/bin/python imageio-ffmpeg
+```
+
+Record five simulation seconds (250 control steps) as a single 1080p, 25-fps H.264 MP4:
+
+```bash
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 250 --checkpoint .pretrained_checkpoints/h1_rough.pt --record earth-test-3 --capture-requested --kit_args=--no-window
+```
+
+`--capture-requested` is an alias for `--screenshot-requested`. Requested videos go in
+`outputs/recordings/MM-DD-YYYY/earth-test-3/`; unrequested videos go in the date's `misc/` folder.
+All previous screenshot folders were moved from `outputs/screenshots` to `outputs/recordings`.
+MP4 uses H.264 with `yuv420p` and fast-start metadata for Mac playback. Download the file to the Mac
+(or copy it with `scp` from a Mac terminal) and open it in QuickTime. SSH itself does not stream a GUI.
+Frames use a fixed camera, with physics paused during render/capture work. Temporary PNG frames are
+removed after encoding. The current policy receives zero velocity; normal automatic episode resets
+remain enabled, so the clip is a preview rather than a continuous successful-walking trial.

@@ -44,19 +44,27 @@ def parse_args():
         help="Capture LABEL-A after --steps and LABEL-B one simulation second later, in a LABEL subfolder",
     )
     parser.add_argument(
+        "--screenshot-series", metavar="LABEL", help="Capture a series one simulation second apart in a LABEL folder"
+    )
+    parser.add_argument("--screenshot-count", type=int, default=5, help="Series length (1–26); default 5")
+    parser.add_argument(
         "--screenshot-requested",
+        "--capture-requested",
         action="store_true",
         help="Mark screenshots as explicitly requested by the user; otherwise save under date/misc",
     )
+    parser.add_argument("--record", metavar="LABEL", help="Record --steps as a 25-fps MP4 in a LABEL folder")
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
     args = parser.parse_args()
     if args.gravity is None:
         args.gravity = "earth" if args.appearance == "earth" else "mars"
-    if (args.screenshot or args.screenshot_pair) and args.steps <= 0:
+    if (args.screenshot or args.screenshot_pair or args.screenshot_series or args.record) and args.steps <= 0:
         parser.error("--screenshot requires --steps greater than zero")
-    if args.screenshot and args.screenshot_pair:
-        parser.error("choose --screenshot or --screenshot-pair")
+    if sum(bool(value) for value in (args.screenshot, args.screenshot_pair, args.screenshot_series, args.record)) > 1:
+        parser.error("choose one capture mode: --screenshot, --screenshot-pair, --screenshot-series, --record")
+    if not 1 <= args.screenshot_count <= 26:
+        parser.error("--screenshot-count must be between 1 and 26")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
     return args
@@ -160,35 +168,49 @@ def main():
             )
             step = 0
             with torch.inference_mode():
-                while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
-                    action_step()
-                    step += 1
-            if args.screenshot_pair:
+                if args.record:
+                    from mars_project.recordings import record_video
+
+                    record_video(
+                        env.unwrapped.sim,
+                        env.unwrapped.scene["robot"],
+                        action_step,
+                        args.steps,
+                        env.unwrapped.step_dt,
+                        args.record,
+                        requested=args.screenshot_requested,
+                    )
+                    step = args.steps
+                else:
+                    while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
+                        action_step()
+                        step += 1
+            if args.screenshot_pair or args.screenshot_series:
                 from mars_project.screenshots import capture_screenshot
 
+                label = args.screenshot_pair or args.screenshot_series
+                count = 2 if args.screenshot_pair else args.screenshot_count
                 interval_steps = round(1.0 / env.unwrapped.step_dt)
                 if abs(interval_steps * env.unwrapped.step_dt - 1.0) > 1e-6:
                     raise ValueError("One second must be an integer number of control steps")
-                capture_screenshot(
-                    env.unwrapped.sim,
-                    env.unwrapped.scene["robot"],
-                    f"{args.screenshot_pair}-A",
-                    subfolder=args.screenshot_pair,
-                    requested=args.screenshot_requested,
+                for index in range(count):
+                    if index:
+                        with torch.inference_mode():
+                            for _ in range(interval_steps):
+                                action_step()
+                                step += 1
+                    capture_screenshot(
+                        env.unwrapped.sim,
+                        env.unwrapped.scene["robot"],
+                        f"{label}-{chr(ord('A') + index)}",
+                        subfolder=label,
+                        requested=args.screenshot_requested,
+                        reframe=index == 0,
+                    )
+                    print(f"CAPTURE_STEP step={step} simulation_seconds={step * env.unwrapped.step_dt:.3f}", flush=True)
+                print(
+                    f"SCREENSHOT_SERIES count={count} interval_seconds=1.0 interval_steps={interval_steps}", flush=True
                 )
-                with torch.inference_mode():
-                    for _ in range(interval_steps):
-                        action_step()
-                        step += 1
-                capture_screenshot(
-                    env.unwrapped.sim,
-                    env.unwrapped.scene["robot"],
-                    f"{args.screenshot_pair}-B",
-                    subfolder=args.screenshot_pair,
-                    requested=args.screenshot_requested,
-                    reframe=False,
-                )
-                print(f"SCREENSHOT_PAIR interval_seconds=1.0 interval_steps={interval_steps}", flush=True)
             if args.screenshot:
                 from mars_project.screenshots import capture_screenshot
 

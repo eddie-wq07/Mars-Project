@@ -9,26 +9,33 @@ from zoneinfo import ZoneInfo
 
 
 def screenshot_path(
-    label: str, taken_at: datetime | None = None, subfolder: str | None = None, *, requested: bool = False
+    label: str,
+    taken_at: datetime | None = None,
+    subfolder: str | None = None,
+    *,
+    requested: bool = False,
+    suffix: str = ".png",
 ) -> Path:
     """Route unsolicited captures to date/misc; preserve requested destinations and avoid overwrites."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", label):
         raise ValueError("Screenshot label must contain only letters, numbers, hyphens or underscores")
+    if suffix not in (".png", ".mp4"):
+        raise ValueError("Capture suffix must be .png or .mp4")
     taken_at = taken_at or datetime.now(ZoneInfo("America/Vancouver"))
     hour = taken_at.hour % 12 or 12
     period = "am" if taken_at.hour < 12 else "pm"
     stamp = f"{hour}:{taken_at:%M}{period}"
-    folder = Path(__file__).resolve().parents[2] / "outputs" / "screenshots" / f"{taken_at:%m-%d-%Y}"
+    folder = Path(__file__).resolve().parents[2] / "outputs" / "recordings" / f"{taken_at:%m-%d-%Y}"
     if not requested:
         subfolder = "misc"
     if subfolder:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", subfolder):
             raise ValueError("Screenshot subfolder must be a single folder name")
         folder = folder / subfolder
-    output = folder / f"{stamp}_{label}.png"
+    output = folder / f"{stamp}_{label}{suffix}"
     sequence = 2
     while output.exists():
-        output = folder / f"{stamp}_{label}-{sequence}.png"
+        output = folder / f"{stamp}_{label}-{sequence}{suffix}"
         sequence += 1
     return output
 
@@ -62,7 +69,7 @@ def frame_robot(stage, camera_path, robot):
 
 
 def capture_screenshot(sim, robot, label: str = "render", *, subfolder=None, reframe=True, requested=False):
-    from omni.kit.viewport.utility import capture_viewport_to_file, get_active_viewport
+    from omni.kit.viewport.utility import get_active_viewport
 
     viewport = get_active_viewport()
     if viewport is None:
@@ -77,6 +84,14 @@ def capture_screenshot(sim, robot, label: str = "render", *, subfolder=None, ref
         sim.render()
     output = screenshot_path(label, subfolder=subfolder, requested=requested)
     output.parent.mkdir(parents=True, exist_ok=True)
+    capture_frame(sim, viewport, output)
+    print(f"SCREENSHOT_SAVED {output}", flush=True)
+
+
+def capture_frame(sim, viewport, output):
+    """Write one viewport frame, rendering as needed without advancing physics."""
+    from omni.kit.viewport.utility import capture_viewport_to_file
+
     capture = capture_viewport_to_file(viewport, str(output))
     pending = asyncio.ensure_future(capture.wait_for_result())
     deadline = time.monotonic() + 60
@@ -94,4 +109,3 @@ def capture_screenshot(sim, robot, label: str = "render", *, subfolder=None, ref
         sim.render()
     if not output.is_file() or output.stat().st_size == 0:
         raise RuntimeError(f"Capture produced no image: {output}")
-    print(f"SCREENSHOT_SAVED {output}", flush=True)
