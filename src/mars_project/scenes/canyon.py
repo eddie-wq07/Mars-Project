@@ -4,6 +4,9 @@ from mars_project.assets.scene_paths import GRAND_CANYON_DIR
 
 OPTIMIZED_DIR = GRAND_CANYON_DIR / "optimized"
 
+# Reduce sky illumination without dimming the camera-visible orange background.
+SKY_SURFACE_CONTRIBUTION = 0.25
+
 
 def configure_canyon_scene(cfg):
     """Spawn scenery and the local collision mesh before physics initializes."""
@@ -25,7 +28,7 @@ def configure_canyon_scene(cfg):
     cfg.scene.terrain.terrain_generator = None
     cfg.scene.terrain.visual_material = None
     cfg.scene.terrain.debug_vis = False
-    # Neutral sky fill preserves rock colors; a warm sun supplies directional shape.
+    # Orange sky background; surface contribution is reduced after scene creation.
     cfg.scene.sky_light.spawn = sim_utils.DomeLightCfg(
         intensity=2.0,
         color=(1.0, 1.0, 1.0),
@@ -58,6 +61,9 @@ def add_canyon_scene():
     for prim in stage.Traverse():
         if prim.IsA(UsdLux.DomeLight):
             prim.CreateAttribute("omni:rtx:usdluxVersion", Sdf.ValueTypeNames.Int).Set(2505)
+            light = UsdLux.LightAPI(prim)
+            light.CreateDiffuseAttr(SKY_SURFACE_CONTRIBUTION)
+            light.CreateSpecularAttr(SKY_SURFACE_CONTRIBUTION)
     ground = stage.GetPrimAtPath("/World/ground/terrain/Ground")
     if not ground or not ground.HasAPI(UsdPhysics.CollisionAPI):
         raise RuntimeError("Local canyon collision mesh was not loaded")

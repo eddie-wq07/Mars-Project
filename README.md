@@ -9,6 +9,45 @@ Run one pretrained H1 walking policy on Earth and Mars, then compare outcomes.
 3. **Findings:** Compare success over 100 trajectories per environment using the same target distance.
 4. **Recording:** Save short videos for visual iteration, then produce final comparison footage.
 
+
+## Training Pipeline
+
+**PPO training happens in RSL-RL. Our launcher only plays a saved policy; it does not train.**
+Green = code/assets present, amber = blocked or needs verification, blue = implementation still needed.
+The green training steps below exist in RSL-RL but are not called by our launcher.
+
+```mermaid
+flowchart TD
+    config["1. CHECK: choose matching task + PPO settings<br/>Current project uses flat-H1; intended policy is rough-H1"]
+    observe["2. OBSERVE: read the robot's state + requested velocity<br/>Flat: 69 values, no terrain sensing<br/>Rough: 256 values, including 187 ground heights"]
+    actor["3. ACTOR: choose 19 joint-position actions<br/>The neural network controls how the robot moves"]
+    simulate["4. SIMULATE: apply actions and advance physics<br/>Return new observations, reward and episode-end flags<br/>One action every 0.02 simulation seconds"]
+    collect["5. COLLECT: store a batch of experience<br/>Training setting: 24 steps per environment"]
+    critic["6. CRITIC: estimate future reward<br/>Compare results with expectations to score the actions"]
+    update["7. PPO UPDATE: improve actor + critic weights<br/>Reuse the batch for 5 learning passes<br/>Limit policy changes to keep learning stable"]
+    save["8. SAVE: write a checkpoint<br/>Actor + critic weights, optimizer state and iteration<br/>Cached flat checkpoint: iteration 499"]
+    playback["9. CHECK: load checkpoint for playback<br/>Current loader fails on a deprecated config field<br/>With migration applied in a test: 5 steps passed"]
+    integrate["10. ADD: integrate the rough-policy playback path<br/>Rough task + PPO config + matching checkpoint<br/>Keep height sensing; disable generated-terrain curriculum<br/>Apply loader migration; then verify walking"]
+
+    config --> observe --> actor --> simulate --> collect --> critic --> update --> save
+    collect -->|Until the batch is full| observe
+    update -->|Next training batch| observe
+    save --> playback --> integrate
+
+    classDef present fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef verify fill:#fef3c7,stroke:#d97706,color:#78350f;
+    classDef todo fill:#dbeafe,stroke:#2563eb,color:#172554;
+    class observe,actor,simulate,collect,critic,update,save present;
+    class config,playback verify;
+    class integrate todo;
+```
+
+**Playback repeats levels 2–4 using fixed weights.** It skips experience collection and PPO updates.
+Our preview currently requests zero velocity; without `--checkpoint`, it sends zero actions instead of using an actor.
+The rough policy also passed a five-step canyon test with temporary configuration changes and Earth gravity.
+That verifies basic loading and integration, not stable walking. The project still plans to reuse pretrained weights, with no new training.
+
+
 ## Flowchart
 
 `src/` holds the importable `mars_project` package. **`tasks/` defines the robot's learning/control environment**
@@ -68,7 +107,7 @@ flowchart TD
     earth["2. EARTH: scene + collision ground + lighting present<br/>RESTORED: all 128 texture LFS pointers hydrated and verified<br/>Verify rendered sky and ground contact"]
     mars["2. MARS: canyon + rigid collision mesh + lighting present<br/>Gravity selectable: Earth −9.81 / Mars −3.71 m/s²"]
     camera["3. PRESENT: scene finishing + one fixed camera<br/>Verify framing in a rendered run"]
-    policy["4. PRESENT: cached checkpoint + optional policy loading<br/>VERIFY: checkpoint compatibility and stable walking<br/>Without checkpoint: zero actions"]
+    policy["4. BLOCKED: flat-H1 checkpoint verified; loader needs config migration<br/>Rough-H1 replacement smoke-tested; not yet integrated<br/>Stable walking unverified; see Training Pipeline above"]
     loop["5. PRESENT: action_step() + env.step() loop<br/>Velocity commands currently zero<br/>--steps limits control steps; 0 runs until closed"]
     walk["6. ADD: constant forward command + reproducible start<br/>Zero lateral/yaw commands; disable standing sampling<br/>Control reset pose, velocity and randomization<br/>Use pretrained inference by default; no new training"]
     timing["7. ADD: 6 simulation-second limit using env.step_dt<br/>Stop on fall; avoid continuing through episode resets"]
@@ -166,7 +205,7 @@ The tests check registration and asset validation; they do not establish walking
 
 ## Render screenshots
 
-Save a PNG at the viewport render resolution (opens in macOS Preview) with local date, time, microseconds and timezone in its filename:
+Save a PNG at the viewport render resolution (opens in macOS Preview) with Vancouver date, 12-hour time and a descriptive label in its filename:
 
 ```bash
 /home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --steps 1 --screenshot --kit_args=--no-window
@@ -174,8 +213,9 @@ Save a PNG at the viewport render resolution (opens in macOS Preview) with local
 
 Screenshots are opt-in: normal runs capture nothing. The command above runs one control step, followed by
 60 render-only warmup frames and capture. `--screenshot` requires a positive `--steps` limit.
-Optionally use `--screenshot /path/to/image.png` to choose the destination.
-Files go to `outputs/screenshots/render_YYYY-MM-DD_HH-MM-SS-microseconds±timezone.png`.
+Use `--screenshot earth-restored` to choose a label; the default label is the scene appearance.
+Files go to `outputs/screenshots/MM-DD-YYYY_h:mmam_label.png` using an underscore before the label,
+for example `11-12-2026_8:21pm_earth-restored.png`. Repeated labels within the same minute receive `-2`, `-3`, etc.
 Use `--appearance earth`, `--steps N`, or `--checkpoint /path/to/policy.pt` to override preview settings.
 The no-window option still requires an NVIDIA GPU and the Kit renderer; it captures the rendered viewport, not the desktop UI.
 The canyon uses our generated orange sky/sun texture; the separate directional light supplies shadows.

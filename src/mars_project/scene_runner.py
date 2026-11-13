@@ -35,8 +35,8 @@ def parse_args():
         nargs="?",
         const=True,
         default=None,
-        type=Path,
-        help="Capture a PNG after --steps; optionally supply a path, otherwise use a timestamped filename",
+        type=str,
+        help="Capture a timestamped PNG after --steps; optionally supply a descriptive label",
     )
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
@@ -143,7 +143,11 @@ def main():
             if args.screenshot:
                 from mars_project.screenshots import capture_screenshot
 
-                capture_screenshot(env.unwrapped.sim, None if args.screenshot is True else args.screenshot)
+                capture_screenshot(
+                    env.unwrapped.sim,
+                    env.unwrapped.scene["robot"],
+                    args.appearance if args.screenshot is True else args.screenshot,
+                )
             if args.steps:
                 print(f"PREVIEW_OK steps={step}")
         finally:
