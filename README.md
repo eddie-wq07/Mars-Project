@@ -246,3 +246,14 @@ for example `11-12-2026/8:21pm_earth-restored.png`. Repeated labels within the s
 Use `--appearance earth`, `--steps N`, or `--checkpoint /path/to/policy.pt` to override preview settings.
 The no-window option still requires an NVIDIA GPU and the Kit renderer; it captures the rendered viewport, not the desktop UI.
 The canyon uses our generated orange sky/sun texture; the separate directional light supplies shadows.
+
+Capture two policy-playback frames one simulation second apart (same camera framing):
+
+```bash
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 50 --checkpoint .pretrained_checkpoints/h1_rough.pt --screenshot-pair earth-test --kit_args=--no-window
+```
+
+A is captured after 50 control steps (1 simulation second), B after another 50 steps.
+Render warmup does not advance physics. Files are saved under `outputs/screenshots/MM-DD-YYYY/earth-test/`
+as `h:mmam_earth-test-A.png` and `h:mmam_earth-test-B.png` (using the actual capture time).
+The policy still receives a zero velocity command.

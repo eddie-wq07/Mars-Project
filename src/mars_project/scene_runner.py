@@ -38,13 +38,20 @@ def parse_args():
         type=str,
         help="Capture a timestamped PNG after --steps; optionally supply a descriptive label",
     )
+    parser.add_argument(
+        "--screenshot-pair",
+        metavar="LABEL",
+        help="Capture LABEL-A after --steps and LABEL-B one simulation second later, in a LABEL subfolder",
+    )
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
     args = parser.parse_args()
     if args.gravity is None:
         args.gravity = "earth" if args.appearance == "earth" else "mars"
-    if args.screenshot and args.steps <= 0:
+    if (args.screenshot or args.screenshot_pair) and args.steps <= 0:
         parser.error("--screenshot requires --steps greater than zero")
+    if args.screenshot and args.screenshot_pair:
+        parser.error("choose --screenshot or --screenshot-pair")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
     return args
@@ -148,6 +155,30 @@ def main():
                 while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
                     action_step()
                     step += 1
+            if args.screenshot_pair:
+                from mars_project.screenshots import capture_screenshot
+
+                interval_steps = round(1.0 / env.unwrapped.step_dt)
+                if abs(interval_steps * env.unwrapped.step_dt - 1.0) > 1e-6:
+                    raise ValueError("One second must be an integer number of control steps")
+                capture_screenshot(
+                    env.unwrapped.sim,
+                    env.unwrapped.scene["robot"],
+                    f"{args.screenshot_pair}-A",
+                    subfolder=args.screenshot_pair,
+                )
+                with torch.inference_mode():
+                    for _ in range(interval_steps):
+                        action_step()
+                        step += 1
+                capture_screenshot(
+                    env.unwrapped.sim,
+                    env.unwrapped.scene["robot"],
+                    f"{args.screenshot_pair}-B",
+                    subfolder=args.screenshot_pair,
+                    reframe=False,
+                )
+                print(f"SCREENSHOT_PAIR interval_seconds=1.0 interval_steps={interval_steps}", flush=True)
             if args.screenshot:
                 from mars_project.screenshots import capture_screenshot
 
