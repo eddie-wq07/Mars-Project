@@ -5,6 +5,8 @@ def configure_preview(cfg, appearance):
     """Use a single stationary command and configure the visual backdrop."""
     cfg.observations.policy.enable_corruption = False
     cfg.events.push_robot = None
+    # Both backdrops use fixed USD ground, not generated terrain levels.
+    cfg.curriculum.terrain_levels = None
     cfg.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
     cfg.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
     cfg.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)

@@ -28,7 +28,7 @@ def parse_args():
     )
     parser.add_argument("--steps", type=int, default=0, help="0 runs until the window closes")
     parser.add_argument(
-        "--checkpoint", help="Optional trained flat-H1 RSL-RL checkpoint; otherwise zero-action preview"
+        "--checkpoint", help="Optional trained rough-H1 RSL-RL checkpoint; otherwise zero-action preview"
     )
     parser.add_argument(
         "--screenshot",
@@ -107,11 +107,19 @@ def main():
             policy = None
             observations = None
             if args.checkpoint:
-                from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper, create_rsl_rl_runner
+                from isaaclab_rl.rsl_rl import (
+                    RslRlVecEnvWrapper,
+                    check_rsl_rl_version,
+                    create_rsl_rl_runner,
+                    handle_deprecated_rsl_rl_cfg,
+                )
 
                 from isaaclab_tasks.utils import load_cfg_from_registry
 
                 agent_cfg = load_cfg_from_registry("Mars-Project-H1", "rsl_rl_cfg_entry_point")
+                # Use Isaac Lab's version-aware migration before constructing RSL-RL models.
+                agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, check_rsl_rl_version())
+                agent_cfg.device = env.unwrapped.device
                 env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
                 runner = create_rsl_rl_runner(env, agent_cfg)
                 runner.load(str(Path(args.checkpoint).expanduser().resolve()))

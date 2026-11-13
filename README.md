@@ -12,40 +12,61 @@ Run one pretrained H1 walking policy on Earth and Mars, then compare outcomes.
 
 ## Training Pipeline
 
-**PPO training happens in RSL-RL. Our launcher only plays a saved policy; it does not train.**
-Green = code/assets present, amber = blocked or needs verification, blue = implementation still needed.
-The green training steps below exist in RSL-RL but are not called by our launcher.
+**This is a workflow map, not a checklist of training we have completed.** We reuse a pretrained
+rough-H1 policy; this project has not run PPO training. Gray nodes describe functionality supplied by
+Isaac Lab/RSL-RL. Green nodes are project integration verified by a smoke test. Amber means testing is still needed.
 
 ```mermaid
 flowchart TD
-    config["1. CHECK: choose matching task + PPO settings<br/>Current project uses flat-H1; intended policy is rough-H1"]
-    observe["2. OBSERVE: read the robot's state + requested velocity<br/>Flat: 69 values, no terrain sensing<br/>Rough: 256 values, including 187 ground heights"]
-    actor["3. ACTOR: choose 19 joint-position actions<br/>The neural network controls how the robot moves"]
-    simulate["4. SIMULATE: apply actions and advance physics<br/>Return new observations, reward and episode-end flags<br/>One action every 0.02 simulation seconds"]
-    collect["5. COLLECT: store a batch of experience<br/>Training setting: 24 steps per environment"]
-    critic["6. CRITIC: estimate future reward<br/>Compare results with expectations to score the actions"]
-    update["7. PPO UPDATE: improve actor + critic weights<br/>Reuse the batch for 5 learning passes<br/>Limit policy changes to keep learning stable"]
-    save["8. SAVE: write a checkpoint<br/>Actor + critic weights, optimizer state and iteration<br/>Cached flat checkpoint: iteration 499"]
-    playback["9. CHECK: load checkpoint for playback<br/>Current loader fails on a deprecated config field<br/>With migration applied in a test: 5 steps passed"]
-    integrate["10. ADD: integrate the rough-policy playback path<br/>Rough task + PPO config + matching checkpoint<br/>Keep height sensing; disable generated-terrain curriculum<br/>Apply loader migration; then verify walking"]
+    config["1. PROJECT — IMPLEMENTED<br/>Mars-Project-H1 uses rough-H1 environment + PPO configs"]
+    subgraph upstream["UPSTREAM TRAINING — supplied by Isaac Lab / RSL-RL; not run by our launcher"]
+        observe["2. OBSERVE — Isaac Lab<br/>256 values: robot state, velocity command, terrain heights"]
+        actor["3. ACTOR — RSL-RL<br/>Choose 19 joint-position actions"]
+        simulate["4. SIMULATE — Isaac Lab<br/>Advance physics; return observations, rewards and done flags"]
+        collect["5. COLLECT — RSL-RL<br/>24 steps per environment"]
+        critic["6. CRITIC — RSL-RL<br/>Estimate future reward"]
+        update["7. PPO UPDATE — RSL-RL<br/>5 learning epochs per batch"]
+        save["8. SAVE — RSL-RL<br/>Checkpoint: learned weights + training state"]
+        observe --> actor --> simulate --> collect --> critic --> update --> save
+        collect -->|More experience| observe
+        update -->|Next batch| observe
+    end
+    checkpoint["EXISTING PRETRAINED CHECKPOINT<br/>Local cache: .pretrained_checkpoints/h1_rough.pt"]
+    playback["9. PROJECT — IMPLEMENTED + SMOKE-TESTED<br/>Migrate config for installed RSL-RL; load rough-H1 checkpoint<br/>Run fixed-weight policy inference in our scene"]
+    verify["10. PROJECT — TESTING STILL NEEDED<br/>Forward walking, stability and Earth/Mars comparison"]
+    config -.->|Configuration if training were requested| observe
+    save -.->|Training would produce this artifact| checkpoint
+    config --> playback
+    checkpoint --> playback --> verify
 
-    config --> observe --> actor --> simulate --> collect --> critic --> update --> save
-    collect -->|Until the batch is full| observe
-    update -->|Next training batch| observe
-    save --> playback --> integrate
-
-    classDef present fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef implemented fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef upstream fill:#f3f4f6,stroke:#9ca3af,color:#111827;
     classDef verify fill:#fef3c7,stroke:#d97706,color:#78350f;
-    classDef todo fill:#dbeafe,stroke:#2563eb,color:#172554;
-    class observe,actor,simulate,collect,critic,update,save present;
-    class config,playback verify;
-    class integrate todo;
+    class config,playback implemented;
+    class observe,actor,simulate,collect,critic,update,save,checkpoint upstream;
+    class verify verify;
 ```
 
-**Playback repeats levels 2–4 using fixed weights.** It skips experience collection and PPO updates.
-Our preview currently requests zero velocity; without `--checkpoint`, it sends zero actions instead of using an actor.
-The rough policy also passed a five-step canyon test with temporary configuration changes and Earth gravity.
-That verifies basic loading and integration, not stable walking. The project still plans to reuse pretrained weights, with no new training.
+**“Matching task” means `Isaac-Velocity-Rough-H1`**, the upstream Isaac Lab velocity-tracking task
+for Unitree H1 on rough terrain. Our registered task remains `Mars-Project-H1`: `MarsH1EnvCfg` inherits
+`H1RoughEnvCfg`, and `MarsH1PPORunnerCfg` inherits `H1RoughPPORunnerCfg`. The actor takes 256 observations
+(69 robot/command values plus 187 terrain heights) and outputs 19 joint actions; actor and critic use
+`[512, 256, 128]` hidden layers. PPO inherits 24 steps per environment, 5 learning epochs, 4 minibatches
+and a 0.001 learning rate. The experiment name remains `mars_h1`.
+
+A **checkpoint** is a saved training snapshot containing learned neural-network weights and training state
+(such as optimizer state and iteration). Loading its weights supplies the learned policy for playback.
+Use a rough-H1 checkpoint matching this observation/action layout and network architecture; the cached
+flat-H1 checkpoint is incompatible. The rough checkpoint from the earlier temporary smoke test is now cached
+at `.pretrained_checkpoints/h1_rough.pt` (local, ignored by Git).
+
+**Playback reuses the operations in steps 2–4 with fixed weights.** Our launcher does not collect training
+batches, update weights or save training checkpoints. It applies Isaac Lab's version-aware RSL-RL config
+migration before creating the runner. Fixed USD scenes retain height sensing and disable generated-terrain
+curriculum. Earth/Mars gravity and appearance are scene overrides, not separate policy tasks.
+
+Step 9 verification covers loading and a short simulation run, **not stable walking**. The current command
+is still zero velocity; without `--checkpoint`, the launcher sends zero actions instead of using a policy.
 
 
 ## Flowchart
@@ -107,7 +128,7 @@ flowchart TD
     earth["2. EARTH: scene + collision ground + lighting present<br/>RESTORED: all 128 texture LFS pointers hydrated and verified<br/>Verify rendered sky and ground contact"]
     mars["2. MARS: canyon + rigid collision mesh + lighting present<br/>Gravity selectable: Earth −9.81 / Mars −3.71 m/s²"]
     camera["3. PRESENT: scene finishing + one fixed camera<br/>Verify framing in a rendered run"]
-    policy["4. BLOCKED: flat-H1 checkpoint verified; loader needs config migration<br/>Rough-H1 replacement smoke-tested; not yet integrated<br/>Stable walking unverified; see Training Pipeline above"]
+    policy["4. IMPLEMENTED: rough-H1 checkpoint playback<br/>Version-aware loader migration; short smoke test passed<br/>Stable walking unverified; see Training Pipeline above"]
     loop["5. PRESENT: action_step() + env.step() loop<br/>Velocity commands currently zero<br/>--steps limits control steps; 0 runs until closed"]
     walk["6. ADD: constant forward command + reproducible start<br/>Zero lateral/yaw commands; disable standing sampling<br/>Control reset pose, velocity and randomization<br/>Use pretrained inference by default; no new training"]
     timing["7. ADD: 6 simulation-second limit using env.step_dt<br/>Stop on fall; avoid continuing through episode resets"]
@@ -146,7 +167,7 @@ The final comparison still needs a shared walking distance. No video has been pr
 
 ## Remaining implementation order
 
-1. LFS scene content is restored and asset validation passes. Verify checkpoint loading and the fixed camera in a short rendered smoke run.
+1. Checkpoint loading and short policy playback are verified. Inspect camera framing and ground contact during the first walking clip.
 2. Add constant forward motion, reproducible resets, a 6-second limit and stop-on-fall behavior.
 3. Add offscreen MP4 capture to the desktop for viewing after an SSH run; inspect the first Earth clip and iterate.
 4. Repeat with the same checkpoint on Mars; then add metrics, repeated trials and the extra environmental physics.
@@ -163,6 +184,12 @@ Use the existing Isaac Sim environment from the project root:
 These are stationary previews unless `--checkpoint /absolute/path/to/checkpoint.pt` is supplied;
 even with a checkpoint the current velocity command is zero. They use a Kit viewport and are **not yet an
 SSH/offscreen recording workflow**. `--steps 300` means 300 control steps, not 300 footsteps or a guaranteed video duration.
+
+Run the cached rough-H1 policy (zero commanded velocity, five control steps):
+
+```bash
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 5 --checkpoint .pretrained_checkpoints/h1_rough.pt --kit_args=--no-window
+```
 
 Restore missing LFS content from a configured remote with `git lfs pull`, or use `git lfs checkout` when the objects
 are already cached. Validation reports missing/unhydrated assets before launching the simulator.
