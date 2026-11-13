@@ -32,6 +32,12 @@ def parse_args():
         "--forward-velocity", type=float, default=0.0, help="Constant body-forward velocity command in m/s"
     )
     parser.add_argument(
+        "--joint-resistance-scale",
+        type=float,
+        default=1.0,
+        help="Scale added Earth/Mars joint damping; 0 keeps original motor gains (not an air-drag model)",
+    )
+    parser.add_argument(
         "--checkpoint", help="Optional trained rough-H1 RSL-RL checkpoint; otherwise zero-action preview"
     )
     parser.add_argument(
@@ -76,6 +82,8 @@ def parse_args():
         parser.error("--camera-motion requires --record")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
+    if not math.isfinite(args.joint_resistance_scale) or args.joint_resistance_scale < 0:
+        parser.error("--joint-resistance-scale must be finite and nonnegative")
     if not math.isfinite(args.forward_velocity) or args.forward_velocity < 0:
         parser.error("--forward-velocity must be finite and nonnegative")
     if args.forward_velocity and not args.checkpoint:
@@ -108,6 +116,10 @@ def main():
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=["physics=isaacsim_physx"])
     cfg.sim.gravity = (0.0, 0.0, -3.71 if args.gravity == "mars" else -9.81)
     configure_preview(cfg, args.appearance, args.forward_velocity)
+    from mars_project.environment.resistance import apply_joint_resistance, environment_profile
+
+    profile = environment_profile(args.gravity)
+    apply_joint_resistance(cfg, profile, args.joint_resistance_scale)
     with launch_simulation(cfg, args):
         if args.appearance == "earth":
             from mars_project.scenes.earth import prepare_earth_renderer
