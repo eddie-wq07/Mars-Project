@@ -128,7 +128,7 @@ flowchart TD
     mars["3. READY: Local Mars terrain<br/>Mars gravity and fixed +X start.<br/>6.5 × 4 m corridor, 5 cm sampling.<br/>Matches the existing scenery surface."]
     soil["4. READY: Moving regolith<br/>Local, physically movable grains.<br/>Coarse 6 cm grain approximation.<br/>Height sensing follows live grains."]
     damping["5. READY: Resistance settings<br/>Added damping: Earth 0.2;<br/>Mars 0.00327 Nm s/rad.<br/>Approximation, not air drag.<br/>Scale 0 restores original gains."]
-    dust["6. ADD: Footstep dust<br/>Only where feet disturb sand.<br/>No global haze or dust storms.<br/>Tune drag for Mars atmosphere.<br/>Use particle-specific values."]
+    dust["6. READY: Footstep dust<br/>Loaded feet disturb moving grains.<br/>No global haze or dust storms.<br/>Mars density sets particle drag.<br/>Bounded pool; clears on reset."]
     test["7. TEST: Contact, then policy<br/>Press and slide a foot first.<br/>Then run H1 from a fixed start.<br/>Check slip, falls and sensing.<br/>Stop on failure."]
     compare["8. EXPORT: Side-by-side video<br/>Match duration, command and view.<br/>Show Earth and Mars together.<br/>Label and synchronize playback.<br/>Export a Mac-ready MP4."]
 
@@ -463,3 +463,21 @@ gains. Stiffness and effort limits are unchanged. The increment uses a heuristic
 Mars/Earth density ratio (0.020/1.225 kg/m³), not a physical joint aerodynamic model.
 `RESISTANCE_CONFIG` logs the profile, original gains and increment. Separate fresh
 Earth and Mars runs verified the applied actuator damping; sixteen tests passed.
+
+
+Step 6 adds contact-driven visual dust: only loaded H1 feet near moving regolith
+emit particles. A fixed 512-particle pool caps emissions at 160/s, removes settled
+or out-of-bounds particles, and clears on episode reset. Particle gravity follows
+the simulation; quadratic drag uses the same environment profile's air density,
+with separate particle size/density coefficients. It is a visual approximation,
+not resolved aerosols or extra load-bearing soil. Unit checks cover contact gating,
+lifetime, bounds and lower Mars drag; a no-policy runtime emitted dust successfully.
+
+Requested named experiments now go to `outputs/recordings/MM-DD-YYYY/earth/earth-*`
+or `outputs/recordings/MM-DD-YYYY/mars/mars-*`. Unsolicited diagnostics stay in that
+date's `misc/`. Existing November 13 Earth folders were moved intact under `earth/`.
+
+```bash
+mkdir -p outputs/log
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --gravity mars --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --record mars-1 --camera-motion orbit --capture-requested --kit_args=--no-window > "outputs/log/mars-1-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+```

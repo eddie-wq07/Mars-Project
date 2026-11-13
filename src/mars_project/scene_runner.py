@@ -168,6 +168,11 @@ def main():
                 for _ in range(3):
                     env.unwrapped.sim.render()
                 log_view_settings(stage, viewport)
+            dust = None
+            if args.appearance == "grand-canyon":
+                from mars_project.environment.dust import FootstepDust
+
+                dust = FootstepDust(env.unwrapped, profile)
             policy = None
             observations = None
             if args.checkpoint:
@@ -196,16 +201,23 @@ def main():
             def action_step():
                 nonlocal observations, action_steps, reset_count
                 if policy is None:
-                    env.step(
+                    _, _, terminated, truncated, _ = env.step(
                         torch.zeros(
                             (env.unwrapped.num_envs, env.unwrapped.action_manager.total_action_dim),
                             device=env.unwrapped.device,
                         )
                     )
+                    dones = terminated | truncated
+                    reset_count += int(dones.sum().item())
                 else:
                     observations, _, dones, _ = env.step(policy(observations))
                     policy.reset(dones)
                     reset_count += int(dones.sum().item())
+                if dust is not None:
+                    if dones.any():
+                        dust.clear()
+                    else:
+                        dust.update(env.unwrapped.step_dt)
                 action_steps += 1
                 if args.forward_velocity and action_steps % round(1.0 / env.unwrapped.step_dt) == 0:
                     hits = env.unwrapped.scene["height_scanner"].data.ray_hits_w.torch
@@ -250,6 +262,11 @@ def main():
                     while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
                         action_step()
                         step += 1
+            if dust is not None:
+                print(
+                    f"DUST_RESULT emitted={dust.cloud.total_emitted} active={int((dust.cloud.life > 0).sum())}",
+                    flush=True,
+                )
             if args.screenshot_pair or args.screenshot_series:
                 from mars_project.screenshots import capture_screenshot
 

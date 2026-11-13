@@ -31,6 +31,11 @@ def screenshot_path(
     if subfolder:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", subfolder):
             raise ValueError("Screenshot subfolder must be a single folder name")
+        # Requested experiment folders are grouped by environment. Diagnostics
+        # remain directly under date/misc, even when their labels mention Mars.
+        group = re.match(r"^(earth|mars)(?:-|$)", subfolder) if requested else None
+        if group:
+            folder = folder / group[1]
         folder = folder / subfolder
     output = folder / f"{stamp}_{label}{suffix}"
     sequence = 2
