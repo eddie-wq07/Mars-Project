@@ -1,6 +1,8 @@
 """H1 scene preview with optional pretrained-policy inference and a fixed camera."""
 
 import argparse
+import subprocess
+import sys
 from pathlib import Path
 
 import warp as wp
@@ -28,11 +30,21 @@ def parse_args():
     parser.add_argument(
         "--checkpoint", help="Optional trained flat-H1 RSL-RL checkpoint; otherwise zero-action preview"
     )
+    parser.add_argument(
+        "--screenshot",
+        nargs="?",
+        const=True,
+        default=None,
+        type=Path,
+        help="Capture a PNG after --steps; optionally supply a path, otherwise use a timestamped filename",
+    )
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
     args = parser.parse_args()
     if args.gravity is None:
         args.gravity = "earth" if args.appearance == "earth" else "mars"
+    if args.screenshot and args.steps <= 0:
+        parser.error("--screenshot requires --steps greater than zero")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
     return args
@@ -40,9 +52,18 @@ def parse_args():
 
 def main():
     args = parse_args()
-    from mars_project.assets.scene_paths import validate_assets
-
-    validate_assets(args.appearance)
+    # Keep standalone USD dependency inspection out of Kit's process.
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); "
+            "from mars_project.assets.scene_paths import validate_assets; validate_assets(sys.argv[2])",
+            str(Path(__file__).resolve().parents[1]),
+            args.appearance,
+        ],
+        check=True,
+    )
     import gymnasium as gym
     import torch
 
@@ -122,6 +143,10 @@ def main():
                 while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
                     action_step()
                     step += 1
+            if args.screenshot:
+                from mars_project.screenshots import capture_screenshot
+
+                capture_screenshot(env.unwrapped.sim, None if args.screenshot is True else args.screenshot)
             if args.steps:
                 print(f"PREVIEW_OK steps={step}")
         finally:
