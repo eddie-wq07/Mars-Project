@@ -46,8 +46,18 @@ def configure_canyon_scene(cfg):
     cfg.sim.default_visualizer_cfg = KitVisualizerCfg(
         eye=(4.0, -6.0, 3.0), lookat=(0.0, 0.0, 0.9), background_color=None
     )
-    # Keep random reset positions on the gentle central part of the local surface.
-    cfg.events.reset_base.params["pose_range"].update(x=(-0.3, 0.3), y=(-0.3, 0.3))
+    # Short, repeatable +X route inside the local collision corridor.
+    cfg.seed = 42
+    cfg.scene.robot.init_state.pos = (0.0, 0.0, 1.05)
+    cfg.scene.robot.init_state.rot = (0.0, 0.0, 0.0, 1.0)
+    cfg.scene.robot.init_state.lin_vel = (0.0, 0.0, 0.0)
+    cfg.scene.robot.init_state.ang_vel = (0.0, 0.0, 0.0)
+    cfg.events.reset_base.params["pose_range"] = {"yaw": (0.0, 0.0)}
+    cfg.events.reset_base.params["velocity_range"] = {}
+    cfg.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+    cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
+    cfg.events.add_base_mass = None
+    cfg.events.base_external_force_torque = None
 
 
 def add_canyon_scene():

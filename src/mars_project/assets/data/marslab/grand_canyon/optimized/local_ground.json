@@ -1,0 +1,20 @@
+{
+  "source": "scenery.usdc:/Canyon/Terrain",
+  "bounds_xy": [
+    [
+      -1.5,
+      -2
+    ],
+    [
+      5,
+      2
+    ]
+  ],
+  "spacing_m": 0.05,
+  "vertices": 10611,
+  "triangles": 20800,
+  "source_triangles": 8,
+  "route_direction": "+X",
+  "spawn_ground_z": 0.0,
+  "limitation": "Resampled source triangles; no added microterrain"
+}

@@ -125,7 +125,7 @@ Gray = existing baseline. Blue = planned work.
 flowchart TD
     earth["1. VERIFIED: Earth walking<br/>Rough-H1 command: 0.5 m/s.<br/>Six-second clip; zero resets.<br/>Terrain sensing stayed valid."]
     capture["2. READY: Ground and video<br/>Local trail collision mesh.<br/>Smooth orbit; Mac-ready MP4.<br/>Check lighting each run."]
-    mars["3. NEXT: Local Mars terrain<br/>Mars scenery and gravity exist.<br/>Refine the walking corridor.<br/>Allow footstep and sensor margins."]
+    mars["3. READY: Local Mars terrain<br/>Mars gravity and fixed +X start.<br/>6.5 × 4 m corridor, 5 cm sampling.<br/>Matches the existing scenery surface."]
     soil["4. ADD: Moving regolith<br/>Feet push loose sand locally.<br/>Limit physics to the corridor.<br/>Sensors must match the surface."]
     damping["5. ADD: Resistance settings<br/>Extra joint damping on Earth;<br/>less added damping on Mars.<br/>Approximation, not air drag.<br/>Test against original motor gains."]
     dust["6. ADD: Footstep dust<br/>Only where feet disturb sand.<br/>No global haze or dust storms.<br/>Tune drag for Mars atmosphere.<br/>Use particle-specific values."]
@@ -434,3 +434,12 @@ mkdir -p outputs/log
 
 This records six seconds at 25 fps after one second of policy settling, retaining the
 80-degree eased arc, 2.6 m radius and 22 mm lens while following the moving robot.
+
+
+Mars step 3: `scripts/build_mars_collision.py` rebuilds the bounded +X walking
+corridor from `scenery.usdc`. Bounds are X [-1.5, 5], Y [-2, 2] metres;
+20,800 triangles cover the route and scanner margins. The scenery itself is coarse
+(about 5.9 m vertex spacing), so resampling preserves its shape rather than adding
+unmeasured small-scale terrain. Metadata and a height grid accompany the USD.
+A fresh simulator check without a checkpoint verified loading, a fixed start and
+rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
