@@ -319,3 +319,24 @@ MP4 uses H.264 with `yuv420p` and fast-start metadata for Mac playback. Download
 Frames use a fixed camera, with physics paused during render/capture work. Temporary PNG frames are
 removed after encoding. The current policy receives zero velocity; normal automatic episode resets
 remain enabled, so the clip is a preview rather than a continuous successful-walking trial.
+
+## Earth policy instability diagnosis (2026-11-13)
+
+`earth-test-3` was a five-second **zero-command standing preview**, not five footsteps. Five control
+steps in the original loader smoke check meant just 0.1 simulation seconds. That check established
+loading/execution, not policy stability.
+
+The Earth collision floor was authored as one USD quad. PhysX accepted it, but the installed Isaac Lab
+height ray caster passes face indices directly to Warp's triangle mesh without triangulating USD
+polygons. This left incomplete sensor ground coverage; missed heights became clipped -1 observations.
+The rough-H1 policy therefore received false terrain information. The floor now uses two triangles
+with the same vertices and physical footprint. A regression test checks triangular topology and coverage.
+
+A seed-42 comparison using the same checkpoint, zero commands and inherited reset settings produced
+five terminations/automatic respawns in 250 control steps with the quad, versus zero with triangulation.
+The corrected test had 187/187 finite height rays at each sampled check and roughly 0.28 m horizontal
+drift over five seconds. Logs: `outputs/log/policy-standing-baseline.log` and
+`outputs/log/policy-standing-triangulated.log`. This is a short diagnostic result, not validation across
+seeds or walking commands. Random starting velocities/yaw and mass randomization remain inherited;
+automatic resets can make a failed preview appear to jump back upright. Reproducible standing tests
+and stop-on-fall behavior remain work to do. Existing videos show the pre-fix behavior.

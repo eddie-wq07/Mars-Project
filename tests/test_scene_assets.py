@@ -36,3 +36,18 @@ def test_rejects_referenced_texture_pointer(tmp_path, monkeypatch):
     texture.unlink()
     with pytest.raises(FileNotFoundError, match="Unresolved scene dependencies"):
         scene_paths.validate_assets("earth")
+
+
+def test_earth_ground_is_complete_triangle_mesh_for_height_scanner():
+    """Warp consumes triangle indices directly; a USD quad silently loses ground coverage."""
+    import numpy as np
+    from pxr import Usd, UsdGeom
+
+    stage = Usd.Stage.Open(str(scene_paths.EARTH_DIR / "usd" / "earth_collision_ground.usda"))
+    mesh = UsdGeom.Mesh(stage.GetPrimAtPath("/CollisionGround/Plane"))
+    assert all(count == 3 for count in mesh.GetFaceVertexCountsAttr().Get())
+    points = np.asarray(mesh.GetPointsAttr().Get())
+    indices = np.asarray(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)
+    triangles = points[indices]
+    areas = np.linalg.norm(np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]), axis=1) / 2
+    assert areas.sum() == pytest.approx(40000.0)
