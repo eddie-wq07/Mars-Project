@@ -205,7 +205,7 @@ The tests check registration and asset validation; they do not establish walking
 
 ## Render screenshots
 
-Save a PNG at the viewport render resolution (opens in macOS Preview) with Vancouver date, 12-hour time and a descriptive label in its filename:
+Save a PNG at the viewport render resolution (opens in macOS Preview), grouped into Vancouver-date folders with 12-hour time and a descriptive label in its filename:
 
 ```bash
 /home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --steps 1 --screenshot --kit_args=--no-window
@@ -214,8 +214,8 @@ Save a PNG at the viewport render resolution (opens in macOS Preview) with Vanco
 Screenshots are opt-in: normal runs capture nothing. The command above runs one control step, followed by
 60 render-only warmup frames and capture. `--screenshot` requires a positive `--steps` limit.
 Use `--screenshot earth-restored` to choose a label; the default label is the scene appearance.
-Files go to `outputs/screenshots/MM-DD-YYYY_h:mmam_label.png` using an underscore before the label,
-for example `11-12-2026_8:21pm_earth-restored.png`. Repeated labels within the same minute receive `-2`, `-3`, etc.
+Files go to `outputs/screenshots/MM-DD-YYYY/h:mmam_label.png` using an underscore before the label,
+for example `11-12-2026/8:21pm_earth-restored.png`. Repeated labels within the same minute receive `-2`, `-3`, etc.
 Use `--appearance earth`, `--steps N`, or `--checkpoint /path/to/policy.pt` to override preview settings.
 The no-window option still requires an NVIDIA GPU and the Kit renderer; it captures the rendered viewport, not the desktop UI.
 The canyon uses our generated orange sky/sun texture; the separate directional light supplies shadows.

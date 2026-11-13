@@ -9,14 +9,14 @@ from zoneinfo import ZoneInfo
 
 
 def screenshot_path(label: str, taken_at: datetime | None = None) -> Path:
-    """Use Vancouver capture time and a descriptive label; never overwrite a previous capture."""
+    """Group captures by Vancouver date; name by time and label without overwriting."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", label):
         raise ValueError("Screenshot label must contain only letters, numbers, hyphens or underscores")
     taken_at = taken_at or datetime.now(ZoneInfo("America/Vancouver"))
     hour = taken_at.hour % 12 or 12
     period = "am" if taken_at.hour < 12 else "pm"
-    stamp = f"{taken_at:%m-%d-%Y}_{hour}:{taken_at:%M}{period}"
-    folder = Path(__file__).resolve().parents[2] / "outputs" / "screenshots"
+    stamp = f"{hour}:{taken_at:%M}{period}"
+    folder = Path(__file__).resolve().parents[2] / "outputs" / "screenshots" / f"{taken_at:%m-%d-%Y}"
     output = folder / f"{stamp}_{label}.png"
     sequence = 2
     while output.exists():
