@@ -96,17 +96,14 @@ def main():
 
             from isaaclab.sim.utils.stage import get_current_stage
 
-            from mars_project.scenes.cameras import create_camera
+            from mars_project.scenes.cameras import apply_view_settings, create_camera
 
             stage = get_current_stage()
             camera_path = create_camera(stage, cfg)
             viewport = get_active_viewport()
             if viewport:
                 viewport.set_active_camera(camera_path)
-                if args.appearance == "earth":
-                    from mars_project.scenes.earth import author_earth_view_settings
-
-                    author_earth_view_settings(stage, camera_path, viewport.render_product_path)
+                apply_view_settings(stage, camera_path, viewport.render_product_path)
             policy = None
             observations = None
             if args.checkpoint:

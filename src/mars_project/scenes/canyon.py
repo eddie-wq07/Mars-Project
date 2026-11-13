@@ -66,12 +66,6 @@ def add_canyon_scene():
     settings = carb.settings.get_settings()
     for key, value in {
         "/rtx/rendermode": "RealTimePathTracing",
-        "/rtx/post/tonemap/op": 6,
-        "/rtx/post/histogram/enabled": False,
-        "/rtx/post/tonemap/filmIso": 0.0,
-        "/rtx/post/tonemap/exposureTime": 1.0,
-        "/rtx/post/tonemap/fNumber": 1.0,
-        "/rtx/post/tonemap/responsivity": 1.0,
         "/rtx/background/source/type": "domeLight",
         "/rtx/raytracing/showLights": 0,
         "/rtx/raytracing/globalVolumetricEffects/enabled": False,
