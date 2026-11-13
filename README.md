@@ -119,41 +119,26 @@ observations, rewards and episode resets. The project runner does not implement 
 
 ## Current state
 
-Cleanup is complete. **Walking stability is not yet verified. MP4 recording is implemented.**
-Green = code/assets present, amber = blocked or needs verification, blue = implementation still needed.
+Gray = existing baseline. Blue = planned work.
 
 ```mermaid
 flowchart TD
-    base["1. PRESENT: H1 task + simulator runner<br/>Inherited observations, actions, rewards and resets<br/>Preview disables pushes and observation noise"]
-    earth["2. EARTH: scene + collision ground + lighting present<br/>RESTORED: all 128 texture LFS pointers hydrated and verified<br/>Verify rendered sky and ground contact"]
-    mars["2. MARS: canyon + rigid collision mesh + lighting present<br/>Gravity selectable: Earth −9.81 / Mars −3.71 m/s²"]
-    camera["3. PRESENT: scene finishing + one fixed camera<br/>Verify framing in a rendered run"]
-    policy["4. IMPLEMENTED: rough-H1 checkpoint playback<br/>Version-aware loader migration; short smoke test passed<br/>Stable walking unverified; see Training Pipeline above"]
-    loop["5. PRESENT: action_step() + env.step() loop<br/>Velocity commands currently zero<br/>--steps limits control steps; 0 runs until closed"]
-    walk["6. ADD: constant forward command + reproducible start<br/>Zero lateral/yaw commands; disable standing sampling<br/>Control reset pose, velocity and randomization<br/>Use pretrained inference by default; no new training"]
-    timing["7. ADD: 6 simulation-second limit using env.step_dt<br/>Stop on fall; avoid continuing through episode resets"]
-    video["8. IMPLEMENTED: offscreen frame capture + H.264 MP4<br/>Save to outputs/recordings for download after SSH runs<br/>Verify motion and framing for each run"]
-    iterate["9. NEXT MILESTONE: inspect first Earth walking clip<br/>Then repeat on Mars with the same checkpoint"]
-    physics["10. LATER: Mars environmental physics<br/>Dust, reduced drag and loose regolith are absent"]
-    evaluation["11. LATER: evaluation and exported results<br/>Define shared distance and success criteria<br/>Log distance, simulation time and falls<br/>Run 100 seeded trajectories per environment"]
+    earth["1. VERIFIED: Earth walking<br/>Rough-H1 command: 0.5 m/s.<br/>Six-second clip; zero resets.<br/>Terrain sensing stayed valid."]
+    capture["2. READY: Ground and video<br/>Local trail collision mesh.<br/>Smooth orbit; Mac-ready MP4.<br/>Check lighting each run."]
+    mars["3. NEXT: Local Mars terrain<br/>Mars scenery and gravity exist.<br/>Refine the walking corridor.<br/>Allow footstep and sensor margins."]
+    soil["4. ADD: Moving regolith<br/>Feet push loose sand locally.<br/>Limit physics to the corridor.<br/>Sensors must match the surface."]
+    damping["5. ADD: Resistance settings<br/>Extra joint damping on Earth;<br/>less added damping on Mars.<br/>Approximation, not air drag.<br/>Test against original motor gains."]
+    dust["6. ADD: Footstep dust<br/>Only where feet disturb sand.<br/>No global haze or dust storms.<br/>Tune drag for Mars atmosphere.<br/>Use particle-specific values."]
+    test["7. TEST: Contact, then policy<br/>Press and slide a foot first.<br/>Then run H1 from a fixed start.<br/>Check slip, falls and sensing.<br/>Stop on failure."]
+    compare["8. EXPORT: Side-by-side video<br/>Match duration, command and view.<br/>Show Earth and Mars together.<br/>Label and synchronize playback.<br/>Export a Mac-ready MP4."]
 
-    base --> earth
-    base --> mars
-    earth --> camera
-    mars --> camera
-    camera --> policy --> loop --> walk --> timing --> video --> iterate
-    iterate --> physics --> evaluation
+    earth --> capture --> mars --> soil --> damping --> dust --> test --> compare
 
-    classDef present fill:#dcfce7,stroke:#16a34a,color:#14532d;
-    classDef verify fill:#fef3c7,stroke:#d97706,color:#78350f;
-    classDef todo fill:#dbeafe,stroke:#2563eb,color:#172554;
-    class base,mars,loop,video present;
-    class earth,camera,policy verify;
-    class walk,timing,iterate,physics,evaluation todo;
+    classDef core fill:#dbeafe,stroke:#2563eb,color:#172554;
+    classDef support fill:#f3f4f6,stroke:#9ca3af,color:#111827;
+    class mars,soil,damping,dust,test,compare core;
+    class earth,capture support;
 ```
-
-**Control steps ≠ footsteps.** Counting 5–10 footsteps requires contact-event logic; start with a 6-second clip.
-The final comparison still needs a shared walking distance. MP4 clips are supported by `--record`; these previews still use zero commanded velocity.
 
 ## Cleanup performed
 
@@ -167,10 +152,7 @@ The final comparison still needs a shared walking distance. MP4 clips are suppor
 
 ## Remaining implementation order
 
-1. Checkpoint loading and short policy playback are verified. Inspect camera framing and ground contact during the first walking clip.
-2. Add constant forward motion, reproducible resets, a 6-second limit and stop-on-fall behavior.
-3. MP4 capture is implemented; inspect Earth policy clips and iterate on stability and framing.
-4. Repeat with the same checkpoint on Mars; then add metrics, repeated trials and the extra environmental physics.
+Follow the Current state flowchart: local Mars terrain → displaced regolith → resistance settings → footstep dust → validation → side-by-side videos.
 
 ## Run the existing preview
 
