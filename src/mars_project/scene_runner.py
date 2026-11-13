@@ -1,6 +1,7 @@
 """H1 scene preview with optional pretrained-policy inference and a fixed camera."""
 
 import argparse
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,9 @@ def parse_args():
         help="Visual backdrop only; independent of gravity",
     )
     parser.add_argument("--steps", type=int, default=0, help="0 runs until the window closes")
+    parser.add_argument(
+        "--forward-velocity", type=float, default=0.0, help="Constant body-forward velocity command in m/s"
+    )
     parser.add_argument(
         "--checkpoint", help="Optional trained rough-H1 RSL-RL checkpoint; otherwise zero-action preview"
     )
@@ -72,6 +76,10 @@ def parse_args():
         parser.error("--camera-motion requires --record")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
+    if not math.isfinite(args.forward_velocity) or args.forward_velocity < 0:
+        parser.error("--forward-velocity must be finite and nonnegative")
+    if args.forward_velocity and not args.checkpoint:
+        parser.error("--forward-velocity requires --checkpoint")
     return args
 
 
@@ -99,7 +107,7 @@ def main():
 
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=["physics=isaacsim_physx"])
     cfg.sim.gravity = (0.0, 0.0, -3.71 if args.gravity == "mars" else -9.81)
-    configure_preview(cfg, args.appearance)
+    configure_preview(cfg, args.appearance, args.forward_velocity)
     with launch_simulation(cfg, args):
         if args.appearance == "earth":
             from mars_project.scenes.earth import prepare_earth_renderer
@@ -170,8 +178,11 @@ def main():
                 policy = runner.get_inference_policy(device=env.unwrapped.device)
                 observations = env.get_observations()
 
+            action_steps = 0
+            reset_count = 0
+
             def action_step():
-                nonlocal observations
+                nonlocal observations, action_steps, reset_count
                 if policy is None:
                     env.step(
                         torch.zeros(
@@ -182,6 +193,16 @@ def main():
                 else:
                     observations, _, dones, _ = env.step(policy(observations))
                     policy.reset(dones)
+                    reset_count += int(dones.sum().item())
+                action_steps += 1
+                if args.forward_velocity and action_steps % round(1.0 / env.unwrapped.step_dt) == 0:
+                    command = env.unwrapped.command_manager.get_command("base_velocity")[0].tolist()
+                    position = env.unwrapped.scene["robot"].data.root_pos_w.torch[0].tolist()
+                    print(
+                        f"WALK_PROGRESS seconds={action_steps * env.unwrapped.step_dt:.2f} "
+                        f"command={command} position={position} resets={reset_count}",
+                        flush=True,
+                    )
 
             print(
                 f"H1 scene ready: {args.gravity}, gravity={cfg.sim.gravity}. "

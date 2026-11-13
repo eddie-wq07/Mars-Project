@@ -308,6 +308,14 @@ rendered with illuminated ground and visible robot surfaces. Inspected frames at
 and Ruff checks passed. These runs support the mitigation, not proof that every
 possible RTX startup failure is eliminated.
 
+Recurrence: the first fixed-camera `earth-7` forward-walking run on 2026-11-13
+was dark despite the startup hardening (`outputs/log/earth-7-forward-walk-5EWy7v.log`).
+The walking command remained `[0.5, 0, 0]` for six seconds with zero resets.
+Treat the lighting issue as unresolved/intermittent, not permanently fixed; retain
+the failed capture and inspect fresh-run retries before delivery.
+An unchanged fresh-process retry rendered correctly (`earth-7/2:15pm_earth-7.mp4`,
+log `outputs/log/earth-7-forward-walk-retry-9ItJ8q.log`), further supporting a timing-dependent fault.
+
 For future changes, run at least two fresh launches, compare the robot and ground in
 rendered captures, and retain separate logs. If darkness recurs, record the effective
 view state and compare fixed-pose renders before/after a single change; do not declare
@@ -364,8 +372,19 @@ All previous screenshot folders were moved from `outputs/screenshots` to `output
 MP4 uses H.264 with `yuv420p` and fast-start metadata for Mac playback. Download the file to the Mac
 (or copy it with `scp` from a Mac terminal) and open it in QuickTime. SSH itself does not stream a GUI.
 Frames use a fixed camera, with physics paused during render/capture work. Temporary PNG frames are
-removed after encoding. The current policy receives zero velocity; normal automatic episode resets
+removed after encoding. The policy receives zero velocity by default; normal automatic episode resets
 remain enabled, so the clip is a preview rather than a continuous successful-walking trial.
+
+For six seconds of forward walking (`0.5 m/s` in the robot's body frame):
+
+```bash
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --record earth-7 --capture-requested --kit_args=--no-window
+```
+
+The same velocity-conditioned checkpoint handles standing and walking. `--forward-velocity`
+sets a constant forward command, disables random standing selection, and keeps lateral/yaw
+commands zero. The fixed-camera run records all 300 control steps without an extra settling
+second. `WALK_PROGRESS` logs the command, position and cumulative resets each simulation second.
 
 ## Earth policy instability diagnosis (2026-11-13)
 
