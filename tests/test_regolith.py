@@ -1,43 +1,48 @@
-"""Check geometric sensing and the bounded, non-overlapping grain bed."""
+"""Fine-sand geometry, localized pressure deformation and mass balance."""
 
 import numpy as np
-import torch
+from pxr import Usd, UsdGeom, UsdPhysics
 
-from mars_project.environment.regolith import GRAIN_RADIUS, grain_positions, surface_heights, terrain_height
-
-
-def test_grain_layer_has_clearance_and_stays_in_corridor():
-    p = grain_positions()
-    assert 1000 < len(p) < 2000
-    assert ((p[:, :2] > [-1.5, -2]) & (p[:, :2] < [5, 2])).all()
-    assert np.allclose(p[:, 2] - terrain_height(p[:, 0], p[:, 1]), GRAIN_RADIUS + 0.001)
-    from scipy.spatial import cKDTree
-
-    distance, _ = cKDTree(p).query(p, k=2)
-    assert distance[:, 1].min() > 2 * GRAIN_RADIUS
+from mars_project.environment.regolith import CELL, COLUMN_DEPTH, SandField, surface_geometry
+from mars_project.scenes.canyon import OPTIMIZED_DIR
 
 
-def test_scanner_tracks_displaced_grains_and_exposed_ground():
-    hits = torch.tensor([[[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [1.0, 1.0, 0.0]]])
-    centers = torch.tensor([[[0.0, 0.0, 0.03]]])
-    before = surface_heights(hits, centers)
-    assert torch.allclose(before, torch.tensor([[0.06, 0, 0]]))
-    centers[..., 0] = 0.1
-    after = surface_heights(hits, centers)
-    assert torch.allclose(after, torch.tensor([[0, 0.06, 0]]))
+def test_pressure_leaves_local_footprint_and_displaced_rim():
+    f = SandField()
+    feet = np.array([[0.4, 0, 0.07]])
+    force = np.array([[0, 0, 120.0]])
+    f.deform(feet, force * 0, [0], 0.02)
+    assert np.array_equal(f.heights, f.initial)
+    for _ in range(50):
+        f.deform(feet, force, [0], 0.02)
+    delta = f.heights - f.initial
+    assert delta.min() < -0.005 and delta.max() > 0
+    assert abs(delta.sum() * CELL * CELL) < 1e-12
+    assert delta.min() >= -0.012 - 1e-12
+    assert np.all(delta[f.xx > 1] == 0)
+    assert f.sample(np.array([0.4]), np.array([0])) < 0.025
+    f.reset()
+    assert np.array_equal(f.heights, f.initial)
 
 
-def test_baked_grains_match_runtime_geometry():
-    from pxr import Usd, UsdGeom, UsdPhysics
+def test_surface_vertices_match_contact_column_tops():
+    f = SandField()
+    f.deform(np.array([[0.4, 0, 0.07]]), np.array([[0, 0, 150.0]]), [0], 0.1)
+    points, faces = surface_geometry(f)
+    tops = points[:, 2]
+    assert np.allclose(tops, f.heights.ravel())
+    assert np.allclose(f.centers()[:, 2] + COLUMN_DEPTH / 2, f.heights.ravel())
+    assert faces.max() < len(points)
 
-    from mars_project.scenes.canyon import OPTIMIZED_DIR
 
+def test_baked_sand_has_no_visible_balls():
     stage = Usd.Stage.Open(str(OPTIMIZED_DIR / "regolith.usdc"))
-    spheres = [UsdGeom.Sphere(p) for p in stage.Traverse() if p.IsA(UsdGeom.Sphere)]
-    positions = grain_positions()
-    assert len(spheres) == len(positions)
-    for sphere, expected in zip(spheres, positions, strict=True):
-        assert sphere.GetRadiusAttr().Get() == GRAIN_RADIUS
-        assert sphere.GetPrim().HasAPI(UsdPhysics.RigidBodyAPI)
-        assert sphere.GetPrim().HasAPI(UsdPhysics.CollisionAPI)
-        assert np.allclose(sphere.GetLocalTransformation().ExtractTranslation(), expected)
+    assert not any(p.IsA(UsdGeom.Sphere) for p in stage.Traverse())
+    cells = [p for p in stage.Traverse() if p.IsA(UsdGeom.Cube)]
+    assert len(cells) == SandField().xx.size
+    for p in cells:
+        assert UsdGeom.Imageable(p).GetVisibilityAttr().Get() == "invisible"
+        assert UsdPhysics.RigidBodyAPI(p).GetKinematicEnabledAttr().Get()
+        assert p.HasAPI(UsdPhysics.CollisionAPI)
+    mesh = UsdGeom.Mesh(stage.GetPrimAtPath("/Regolith/Surface"))
+    assert len(mesh.GetPointsAttr().Get()) == len(cells)

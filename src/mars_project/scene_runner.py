@@ -262,6 +262,14 @@ def main():
                     while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
                         action_step()
                         step += 1
+            if hasattr(env.unwrapped, "sand"):
+                sand = env.unwrapped.sand
+                delta = sand.field.heights - sand.field.initial
+                print(
+                    f"SAND_RESULT displaced_m3={sand.total_displaced:.7f} "
+                    f"max_indent_m={-delta.min():.5f} max_ridge_m={delta.max():.5f}",
+                    flush=True,
+                )
             if dust is not None:
                 print(
                     f"DUST_RESULT emitted={dust.cloud.total_emitted} active={int((dust.cloud.life > 0).sum())}",

@@ -126,9 +126,9 @@ flowchart TD
     earth["1. VERIFIED: Earth walking<br/>Rough-H1 command: 0.5 m/s.<br/>Six-second clip; zero resets.<br/>Terrain sensing stayed valid."]
     capture["2. READY: Ground and video<br/>Local trail collision mesh.<br/>Smooth orbit; Mac-ready MP4.<br/>Check lighting each run."]
     mars["3. READY: Local Mars terrain<br/>Mars gravity and fixed +X start.<br/>6.5 × 4 m corridor, 5 cm sampling.<br/>Matches the existing scenery surface."]
-    soil["4. READY: Moving regolith<br/>Local, physically movable grains.<br/>Coarse 6 cm grain approximation.<br/>Height sensing follows live grains."]
+    soil["4. READY: Moving regolith<br/>Fine-grain textured surface.<br/>Foot pressure displaces sand.<br/>Contact and sensing follow height."]
     damping["5. READY: Resistance settings<br/>Added damping: Earth 0.2;<br/>Mars 0.00327 Nm s/rad.<br/>Approximation, not air drag.<br/>Scale 0 restores original gains."]
-    dust["6. READY: Footstep dust<br/>Loaded feet disturb moving grains.<br/>No global haze or dust storms.<br/>Mars density sets particle drag.<br/>Bounded pool; clears on reset."]
+    dust["6. READY: Footstep dust<br/>Moving, loaded feet kick up sand.<br/>No global haze or dust storms.<br/>Mars density sets particle drag.<br/>Bounded pool; clears on reset."]
     test["7. TEST: Contact, then policy<br/>Press and slide a foot first.<br/>Then run H1 from a fixed start.<br/>Check slip, falls and sensing.<br/>Stop on failure."]
     compare["8. EXPORT: Side-by-side video<br/>Match duration, command and view.<br/>Show Earth and Mars together.<br/>Label and synchronize playback.<br/>Export a Mac-ready MP4."]
 
@@ -445,15 +445,21 @@ A fresh simulator check without a checkpoint verified loading, a fixed start and
 rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
 
 
-Mars step 4 adds 1,782 independently colliding spheres (3 cm radius) in a shallow
-local layer, X [-0.6, 4.4], Y [-0.65, 0.66] m. This is a coarse granular contact
-approximation, not calibrated fine sand or a continuum sinkage model. Grain angular
-damping approximates rolling resistance; it is separate from atmospheric drag.
-The grains share one USD asset for efficient spawning. The height observation combines
-static terrain rays with analytic intersections against live grain positions; episode
-reset restores the bed. Rebuild with `.venv/bin/python scripts/build_mars_regolith.py`.
+Mars step 4 uses a fine-textured sand surface over a local 5 × 2.1 m contact grid.
+Sub-millimetre texture replaces the visible 6 cm balls. Foot pressure lowers 5 cm
+contact cells by up to 12 mm and redistributes that volume into surrounding ridges.
+Kinematic collision columns and height sensing share elevations. A continuous visual
+sheet interpolates between their centers, smoothing the 5 cm collision discretization;
+reset restores the bed. This is an empirical soil approximation, not calibrated
+regolith mechanics or individually simulated sand grains.
+Rebuild with `.venv/bin/python scripts/build_mars_regolith.py`.
 Use `/home/eddie/env_isaaclab/bin/python scripts/check_regolith.py --kit_args=--no-window`
-for the no-policy loaded-foot drop/slide/reset check (redirect logs into `outputs/log/`).
+for the loaded-foot, collision-height, volume and reset check (logs in `outputs/log/`).
+The loaded-foot check measured 3.1 mm descent, matched visible/live collision heights,
+and verified volume conservation and reset. CPU scene queries retain stale GPU-body
+poses in this runtime; policy sensing uses live physics tensors instead.
+Fine-sand playback: six recorded seconds, zero resets, valid terrain sensing;
+maximum indentation 6.9 mm and ridge height 3.5 mm. Nineteen tests pass.
 
 
 Step 5 selects added joint resistance from `--gravity`, independently of scenery.
@@ -465,8 +471,8 @@ Mars/Earth density ratio (0.020/1.225 kg/m³), not a physical joint aerodynamic 
 Earth and Mars runs verified the applied actuator damping; sixteen tests passed.
 
 
-Step 6 adds contact-driven visual dust: only loaded H1 feet near moving regolith
-emit particles. A fixed 512-particle pool caps emissions at 160/s, removes settled
+Step 6 adds contact-driven visual dust: only moving, loaded H1 feet or new foot contacts
+emit 0.15–0.35 mm grains. A fixed 2,048-particle pool caps emissions at 600/s, removes settled
 or out-of-bounds particles, and clears on episode reset. Particle gravity follows
 the simulation; quadratic drag uses the same environment profile's air density,
 with separate particle size/density coefficients. It is a visual approximation,
