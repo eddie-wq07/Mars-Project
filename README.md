@@ -127,11 +127,11 @@ Green = verified scope. Amber = experimental. Blue = pending. Red = retired.
 flowchart TD
     earth["1. VERIFIED: Earth baseline<br/>Rough-H1 walking on rigid trail.<br/>Same checkpoint; no retraining.<br/>Earlier six-second run: zero resets."]
     capture["2. VERIFIED: Scene and capture<br/>Local rigid collision meshes.<br/>Smooth orbit; Mac-ready MP4.<br/>Video does not validate soil."]
-    solver["3. EXPERIMENTAL: Soil solver<br/>Headless two-way MPM benchmark.<br/>Weight support verified.<br/>Grid and timestep checks fail."]
+    solver["3. EXPERIMENTAL: Soil solver<br/>Newton MPM now loads in canyon playback.<br/>Two-way H1 coupling and live heights.<br/>Grid and timestep checks still fail."]
     calibration["4. PENDING: Dry loose sand<br/>Check grid and timestep convergence.<br/>Calibrate sinkage, shear and repose.<br/>No validated Mars soil preset yet."]
     air["5. PENDING: Atmosphere<br/>Keep motor gains unchanged.<br/>Model forces from relative airflow.<br/>Joint damping is not air drag."]
-    grains["6. PENDING: Ejected material<br/>Use mass and momentum exchange.<br/>Resolve launch from foot contact.<br/>Fine airborne dust is not modeled."]
-    test["7. PENDING: H1 on verified soil<br/>Connect forces and terrain sensing.<br/>Check Earth on the same solver.<br/>Then test Mars slip and falls."]
+    grains["6. EXPERIMENTAL: Airborne fines<br/>Mass transfers from detached soil.<br/>Micron parcels, gravity and gas drag.<br/>Release rate still needs calibration."]
+    test["7. EXPERIMENTAL: H1 on MPM<br/>Forces, terrain sensing and reset connected.<br/>Validate Earth on the same solver.<br/>Then measure Mars slip and falls."]
     compare["8. PENDING: Comparison<br/>Same policy, route and command.<br/>Compare measured trajectories.<br/>Record after physics checks pass."]
     retired["RETIRED from playback<br/>Prescribed footprint columns.<br/>Cosmetic dust emission.<br/>Default added joint damping."]
 
@@ -143,12 +143,12 @@ flowchart TD
     classDef pending fill:#dbeafe,stroke:#2563eb,color:#172554;
     classDef retired fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
     class earth,capture verified;
-    class solver experimental;
-    class calibration,air,grains,test,compare pending;
+    class solver,grains,test experimental;
+    class calibration,air,compare pending;
     class retired retired;
 ```
 
-**Current Mars playback is a rigid-ground gravity test. The new soil benchmark is separate; neither is validated Martian loose-sand inference.**
+**Canyon playback now defaults to experimental two-way MPM soil. `--soil rigid` restores the previous rigid-ground PhysX preview. Neither mode is validated Martian loose-sand inference.**
 
 ## Cleanup performed
 
@@ -162,7 +162,7 @@ flowchart TD
 
 ## Remaining implementation order
 
-Follow the Current state flowchart: solver verification → material calibration → physical atmosphere and ejected material → H1 integration → measured comparison.
+Follow the Current state flowchart: solver verification → material calibration → physical atmosphere and ejected material → H1 validation → measured comparison.
 
 ## Run the existing preview
 
@@ -195,6 +195,8 @@ tests pass. Rendered appearance, ground contact and walking stability still requ
 scripts/view_scene.py             Scene CLI entry point
 scripts/benchmark_mpm_soil.py     Headless coupled soil/foot experiment
 scripts/verify_mpm_soil.py        Numerical controls and refinement checks
+scripts/check_mpm_playback.py     Loaded H1/soil interaction, sensing and reset check
+scripts/check_soil_walk.py        Seven-second policy, local soil and dust conservation check
 src/mars_project/
   scene_runner.py                CLI, simulator lifecycle, checkpoint inference and stepping
   tasks/h1.py                    H1 environment/PPO configuration and Gym registration
@@ -202,7 +204,12 @@ src/mars_project/
   scenes/earth.py                Earth geometry, lighting and rendering settings
   scenes/canyon.py               Canyon geometry, collision and lighting
   scenes/cameras.py              One fixed camera
-  environment/                   Retired deformation/dust; opt-in damping heuristic
+  environment/mpm_soil.py        Coupled MPM soil, live height observations and runtime checks
+  environment/soil_runtime.py    Contact-local activation, persistent terrain state and dust transfer
+  environment/soil_surface.py    Continuous terrain mesh and fine sand material
+  environment/airborne_dust.py   Mass-carrying aerosol parcels with gravity and gas drag
+  environment/dust_volume.py     Conservative extinction grid and native Kit volume rendering
+  environment/                  Also retains legacy deformation/dust and opt-in damping
   assets/scene_paths.py          Runtime paths and USD dependency validation
   assets/data/                  Packaged runtime assets and provenance
 tests/                          Registration and asset-validation checks
@@ -215,7 +222,8 @@ Both are needed; there is no second stand-up task or keyboard-control module.
 
 `pyproject.toml` and `uv.lock` describe the environment and editable Isaac Lab dependencies under
 `/home/eddie/IsaacLab`. Update `[tool.uv.sources]` if that checkout moves. `uv sync` defaults to Newton;
-this project's scene runner explicitly uses Isaac Sim PhysX and Kit, available in the existing interpreter above.
+this project's scene runner uses PhysX for rigid previews and coupled Newton/MuJoCo/MPM for canyon soil,
+with Kit rendering in both modes, available in the existing interpreter above.
 The optional dependency extras remain available for Isaac Lab compatibility.
 
 ```bash
@@ -458,6 +466,130 @@ A fresh simulator check without a checkpoint verified loading, a fixed start and
 rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
 
 
+### MPM soil in canyon playback
+
+`--appearance grand-canyon` replaces the local terrain with a buried, 16 cm deep
+MPM soil domain (6.5 × 4 m). Its 520,000 material samples represent 5,824 kg at the
+provisional 1,400 kg/m³ bulk density. The 4 cm computational voxels and 2 cm sample
+spacing are bulk discretization, **not grain dimensions**, and are never rendered.
+
+A continuous mesh replaces the corresponding original canyon triangles. Its boundary
+matches their elevations and photographic UVs, with the same material on the surrounding
+terrain. Sand normals use a 0.256 m texture tile (0.25 mm per texel), with a matte finish.
+The visible surface and policy height observations use the same reconstruction of solved
+soil displacement. No raised slab, exposed side faces, overlapping terrain sheet or
+visible rectangular particle perimeter is authored.
+
+`environment/soil_runtime.py` uses Newton's native active flags: material near the
+feet and still-moving material is dynamic; a three-voxel prescribed-velocity halo
+provides confinement; distant undisturbed material is excluded from grid assembly
+and advection. The entire domain retains storage and a cheap activity scan, so this
+reduces the physical solve, not all memory use. Settled deformation and plastic history
+persist when regions sleep. This finite local domain approximates the rest of the terrain;
+it does not resolve long-range stress waves. Keep the robot within the collision corridor.
+
+`environment/airborne_dust.py` carries a fine fraction from mechanically detached
+material into mass-carrying parcels. Transfer preserves mass and source velocity; it
+does not add random upward kicks. The explicit, uncalibrated default releases 0.0001% of a detached bulk sample,
+in 1/2/5/10 micrometre **radius** bins; this is an emission fraction, not the
+soil’s total fine-grain content. Resolved dust/gas mass loading is checked on every
+control step against a 0.1 limit for the prescribed-gas approximation. Gravity, buoyancy and slip-corrected Stokes
+drag are integrated analytically in a prescribed atmosphere (Mars: 610 Pa, 210 K,
+CO₂; Earth: 101325 Pa, 288.15 K, air). The low-Reynolds-number domain is checked.
+Parcels deposit into a persistent surface mass reservoir instead of expiring on a timer.
+Gas back-reaction, turbulence, grain cohesion/fragmentation and calibrated release rates
+are not resolved. A volumetric extinction field represents suspended grain populations;
+its reconstruction conserves integrated optical area and does not enlarge grain bodies.
+The optical model assumes Q_ext=2 and prescribed scattering color/phase, not spectral Mie scattering.
+
+The dust transport equations have analytic-limit and conservation tests. They do **not**
+make the material or entrainment closure experimentally validated. Relevant primary
+references: [Mars dust release experiments](https://arxiv.org/abs/2208.14761),
+[impact-ejecta settling experiments](https://arxiv.org/abs/2310.09133), and
+[Newton's implicit MPM API](https://newton-physics.github.io/newton/latest/api/_generated/newton.solvers.SolverImplicitMPM.html).
+WorldParticle is not a dependency and has not been installed or substituted for Newton.
+
+Soil playback uses RTX Path Tracing for heterogeneous dust volumes, with 4 samples
+per render update, denoising and up to 128 accumulated samples on a frozen frame.
+The original exposure, sun/sky values and camera activation sequence are preserved.
+The volume writer comes from Kit’s `omni.volume` extension: Warp’s NanoVDB 32.8
+output is incompatible with this renderer’s 32.7 reader. Kit still logs 3D/1D texture
+warnings in this multi-engine setup; a warning alone does not establish whether
+the primary viewport rendered the volume. Inspect the actual captures. Diagnostic
+`9:48pm_soil-dust-native-volume.png` shows a visible cloud, but its deliberately
+superseded 1% release setting was too dense for prescribed-gas transport.
+
+H1 and the kinematic substrate run in Newton's MuJoCo rigid solver; Newton's
+implicit MPM solver owns the soil. A two-way proxy returns soil reaction forces
+to the robot on each 5 ms physics tick, with two rigid substeps. The substrate
+supports the soil layer and remains a collision boundary beneath it. This changes
+the robot physics backend from the previous PhysX preview as well as adding soil;
+Earth/Mars outcome comparisons need a matched backend before scientific interpretation.
+
+Joint position/velocity observations and actions explicitly retain the checkpoint's
+PhysX joint ordering, since Newton imports joints in a different order.
+The policy retains its 187 height observations, now sampled from the live MPM
+terrain surface, including the lower substrate and reconstructed soil thickness. Episode resets restore
+particle positions, velocities and solver state. Coupled Newton does not currently
+support the inherited contact-force sensor, so the two contact-based reward terms
+are disabled and fall detection uses base clearance and tilt. Motor gains are unchanged.
+
+```bash
+mkdir -p outputs/log
+/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --steps 100 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --kit_args=--no-window > "outputs/log/mpm-h1-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+/home/eddie/env_isaaclab/bin/python scripts/check_mpm_playback.py > "outputs/log/mpm-playback-check-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+/home/eddie/env_isaaclab/bin/python scripts/check_soil_walk.py > "outputs/log/soil-walk-check-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+```
+
+`MPM_LOADED` verifies actual particle count, density and suppression of solver-point rendering.
+`MPM_PROGRESS` reports material motion and the current soil force on H1, and fails
+on nonfinite particle state or exhausted sparse-grid capacity. `LOCAL_SOIL` reports active,
+halo and sleeping counts plus airborne/deposited dust and the total mass ledger. The integration check
+also checks live sensing, interaction and reset; add `--visualizer kit --kit_args=--no-window`
+to check synchronization of the terrain surface vertices. Use `--soil rigid` with the
+scene runner for the old rigid-ground baseline. Earth appearance remains rigid by default.
+
+November 13 verification of the continuous terrain and airborne-fines version: the
+seven-second headless run used the same checkpoint, configuration and 0.5 m/s command
+as recording. H1 advanced 1.85 m in +X with zero resets and finite observations.
+Between 29,171 and 42,724 of the 520,000 samples were dynamic at the one-second
+checkpoints; the remainder were sleeping or in the confining halo. The complete
+soil/airborne/deposited mass ledger stayed within 0.00001 kg of its initial value on
+every control step. Resolved dust/gas mass ratios at the one-second checkpoints
+ranged from 0.0134 to 0.0214, below the prescribed-gas check's 0.1 limit. This is
+an integration check, not an experimental material validation. Evidence:
+[seven-second policy log](outputs/log/soil-walk-validation-20261113-215354-758360882.log).
+All 30 regression tests and Ruff checks passed.
+
+The revised requested `mars-4` is
+[`9:55pm_mars-4-orbit.mp4`](outputs/recordings/11-13-2026/mars/mars-4/9:55pm_mars-4-orbit.mp4):
+six seconds at 25 fps, following a one-second policy warmup. The recorded run kept
+finite soil state and height observations, advanced 1.86 m in +X over the complete
+seven seconds, and had zero resets. Start, middle and end frames show illuminated robot
+surfaces, fine ground detail and no raised rectangular perimeter. Dust is faint at
+the conservative, uncalibrated release rate. The earlier `9:15pm` version is retained.
+Recording evidence: [render log](outputs/log/mars-4-final-20261113-215539-870457840.log).
+Full decoding verified all 150 H.264 frames at 3840 × 2160. A final headless repeat
+with concentration checks on all 350 control steps passed with a peak resolved
+dust/gas mass ratio of 0.030515. The separate reset check verified unchanged distant
+particles, measured soil reaction, live height sensing and a finite step after reset
+with CUDA graphs enabled. All 30 tests and lint passed again. Evidence:
+[walking check](outputs/log/soil-walk-final-20261113-220126-246861.log),
+[reset check](outputs/log/soil-reset-final-20261113-220126-246861.log), and
+[completion record](outputs/log/mars-4-detached-status-20261113-220126-246861.json).
+
+Earlier November 13 verification of the superseded raised point-cloud version: the one-second no-policy check passed material
+motion, H1 reaction forces, live height sensing, particle/solver reset and equality of
+the rendered Fabric points with the solver positions. A separate 100-control-step
+(two-second) run loaded the existing rough-H1 checkpoint at a 0.5 m/s command, advanced
+about 0.30 m in +X with zero resets, and kept all height rays finite. The illuminated
+diagnostic frame shows material displaced by the feet. These are short integration
+checks, not calibrated sinkage or sustained-walking results. All 25 regression tests
+and Ruff checks passed. Evidence:
+[integration log](outputs/log/mpm-playback-check-20261113-210928-633246234.log),
+[policy log](outputs/log/mpm-h1-walk-20261113-211159-194712597.log), and
+[diagnostic frame](outputs/recordings/11-13-2026/misc/9:12pm_mpm-h1-walk.png).
+
 ### Soil physics verification
 
 `scripts/benchmark_mpm_soil.py` runs Newton implicit MPM coupled to a dynamic
@@ -499,13 +631,13 @@ acceptance gates, not experimental Mars tolerances. JSON reports in
 force samples and failed checks; `.log` files go in `outputs/log/`. A nonzero exit
 means at least one numerical check failed. Even exit zero does **not** establish
 Mars validity: material calibration, independent validation, bed-boundary studies,
-three-level convergence and H1 integration remain necessary.
+three-level convergence and validation of the experimental H1 integration remain necessary.
 
 The November 13 checks measured 55.652 N support against 55.650 N expected weight.
 Switching off feedback let the foot fall through to the rigid base. However,
 halving the timestep changed the lowest foot height by 4.52 mm; halving the grid
 spacing changed it by 4.41 mm. Both exceed the provisional 2 mm gate. **Numerical
-verification is incomplete; H1 loose-sand integration remains pending.** These
+verification is incomplete; the H1 integration is experimental.** These
 heights include settling and contact discretization, not calibrated Mars sinkage.
 The same suite resisted a 5 N horizontal load with about 5 N of soil reaction;
 40 N produced 0.191 m more displacement than the unloaded control. All seven
@@ -518,8 +650,8 @@ Their previous tests verified implementation behavior, not soil constitutive law
 Existing Mars recordings do not establish realistic sinkage, traction or dust behavior.
 `--joint-resistance-scale` now defaults to **0**, preserving the original motor
 gains on both planets. Nonzero values explicitly opt into the old damping heuristic;
-they are not aerodynamic forces. The existing Mars launcher logs its rigid-ground
-scope and cannot be used to infer loose-sand sinkage or traction. The retired
+they are not aerodynamic forces. The Mars launcher logs its selected soil model
+and unvalidated scope. The retired
 `check_regolith.py` now requires `--legacy-heuristic` to reproduce its old checks.
 
 Requested named experiments now go to `outputs/recordings/MM-DD-YYYY/earth/earth-*`

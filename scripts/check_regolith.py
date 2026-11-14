@@ -27,7 +27,7 @@ def main():
     from mars_project.scenes.setup import configure_preview
 
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=["physics=isaacsim_physx"])
-    configure_preview(cfg, "grand-canyon")
+    configure_preview(cfg, "grand-canyon", soil="rigid")
     configure_regolith(cfg)
     cfg.scene.robot.init_state.pos = (-1.0, 1.5, 1.05)
     cfg.scene.probe = RigidObjectCfg(

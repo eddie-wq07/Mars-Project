@@ -25,9 +25,15 @@ def parse_args():
         "--appearance",
         choices=["earth", "grand-canyon"],
         default="earth",
-        help="Visual backdrop only; independent of gravity",
+        help="Scene backdrop; canyon defaults to MPM soil, gravity can be selected separately",
     )
     parser.add_argument("--steps", type=int, default=0, help="0 runs until the window closes")
+    parser.add_argument(
+        "--soil",
+        choices=["mpm", "rigid"],
+        default=None,
+        help="Canyon defaults to experimental two-way MPM; rigid selects the previous PhysX baseline",
+    )
     parser.add_argument(
         "--forward-velocity", type=float, default=0.0, help="Constant body-forward velocity command in m/s"
     )
@@ -72,6 +78,10 @@ def parse_args():
     args = parser.parse_args()
     if args.gravity is None:
         args.gravity = "earth" if args.appearance == "earth" else "mars"
+    if args.soil is None:
+        args.soil = "mpm" if args.appearance == "grand-canyon" else "rigid"
+    if args.soil == "mpm" and args.appearance != "grand-canyon":
+        parser.error("MPM soil is currently configured for --appearance grand-canyon")
     if (args.screenshot or args.screenshot_pair or args.screenshot_series or args.record) and args.steps <= 0:
         parser.error("--screenshot requires --steps greater than zero")
     if sum(bool(value) for value in (args.screenshot, args.screenshot_pair, args.screenshot_series, args.record)) > 1:
@@ -89,6 +99,29 @@ def parse_args():
     if args.forward_velocity and not args.checkpoint:
         parser.error("--forward-velocity requires --checkpoint")
     return args
+
+
+def load_preview_policy(env, checkpoint):
+    """Load the preview policy identically in rendered and headless verification."""
+    from isaaclab_rl.rsl_rl import (
+        RslRlVecEnvWrapper,
+        check_rsl_rl_version,
+        create_rsl_rl_runner,
+        handle_deprecated_rsl_rl_cfg,
+    )
+
+    from isaaclab_tasks.utils import load_cfg_from_registry
+
+    agent_cfg = load_cfg_from_registry("Mars-Project-H1", "rsl_rl_cfg_entry_point")
+    # Use Isaac Lab's version-aware migration before constructing RSL-RL models.
+    agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, check_rsl_rl_version())
+    agent_cfg.device = env.unwrapped.device
+    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+    runner = create_rsl_rl_runner(env, agent_cfg)
+    runner.load(str(Path(checkpoint).expanduser().resolve()))
+    policy = runner.get_inference_policy(device=env.unwrapped.device)
+    observations = env.get_observations()
+    return env, policy, observations
 
 
 def main():
@@ -113,21 +146,27 @@ def main():
     import mars_project.tasks  # noqa: F401 -- registers Mars-Project-H1
     from mars_project.scenes.setup import configure_preview
 
-    cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=["physics=isaacsim_physx"])
+    backend = "newton_mjwarp" if args.soil == "mpm" else "isaacsim_physx"
+    cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=[f"physics={backend}"])
     cfg.sim.gravity = (0.0, 0.0, -3.71 if args.gravity == "mars" else -9.81)
-    configure_preview(cfg, args.appearance, args.forward_velocity)
+    configure_preview(cfg, args.appearance, args.forward_velocity, soil=args.soil)
     from mars_project.environment.resistance import apply_joint_resistance, environment_profile
 
     profile = environment_profile(args.gravity)
     apply_joint_resistance(cfg, profile, args.joint_resistance_scale)
     if args.appearance == "grand-canyon":
         print(
-            "PHYSICS_SCOPE ground=rigid_mesh soil_model=none atmospheric_forces=none "
-            "cosmetic_dust=disabled; this preview does not predict loose-sand sinkage or traction. "
-            "Two-way soil verification runs separately in scripts/benchmark_mpm_soil.py.",
+            f"PHYSICS_SCOPE ground={args.soil} soil_model={'newton_implicit_mpm' if args.soil == 'mpm' else 'none'} "
+            f"dust_transport={'slip_corrected_stokes' if args.soil == 'mpm' else 'none'} "
+            "material_validated=False; "
+            "MPM convergence and material calibration remain incomplete.",
             flush=True,
         )
     with launch_simulation(cfg, args):
+        if args.soil == "mpm":
+            from mars_project.scenes.canyon import prepare_soil_renderer
+
+            prepare_soil_renderer()
         if args.appearance == "earth":
             from mars_project.scenes.earth import prepare_earth_renderer
 
@@ -148,6 +187,10 @@ def main():
 
                 add_canyon_scene()
             env.reset()
+            if args.soil == "mpm":
+                from mars_project.environment.mpm_soil import soil_progress, verify_soil_loaded
+
+                verify_soil_loaded(env.unwrapped)
             robot_data = env.unwrapped.scene["robot"].data
             print(
                 f"INITIAL_ROBOT position={robot_data.root_pos_w.torch[0].tolist()} "
@@ -157,7 +200,12 @@ def main():
             )
             import carb.settings
 
-            carb.settings.get_settings().set("/rtx/rendermode", "RealTimePathTracing")
+            # Heterogeneous airborne dust requires the non-uniform volume path.
+            # Set it before authoring/activating the final camera, preserving the
+            # verified exposure and lighting initialization sequence.
+            carb.settings.get_settings().set(
+                "/rtx/rendermode", "PathTracing" if args.soil == "mpm" else "RealTimePathTracing"
+            )
             from omni.kit.viewport.utility import get_active_viewport
 
             from isaaclab.sim.utils.stage import get_current_stage
@@ -178,24 +226,7 @@ def main():
             policy = None
             observations = None
             if args.checkpoint:
-                from isaaclab_rl.rsl_rl import (
-                    RslRlVecEnvWrapper,
-                    check_rsl_rl_version,
-                    create_rsl_rl_runner,
-                    handle_deprecated_rsl_rl_cfg,
-                )
-
-                from isaaclab_tasks.utils import load_cfg_from_registry
-
-                agent_cfg = load_cfg_from_registry("Mars-Project-H1", "rsl_rl_cfg_entry_point")
-                # Use Isaac Lab's version-aware migration before constructing RSL-RL models.
-                agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, check_rsl_rl_version())
-                agent_cfg.device = env.unwrapped.device
-                env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
-                runner = create_rsl_rl_runner(env, agent_cfg)
-                runner.load(str(Path(args.checkpoint).expanduser().resolve()))
-                policy = runner.get_inference_policy(device=env.unwrapped.device)
-                observations = env.get_observations()
+                env, policy, observations = load_preview_policy(env, args.checkpoint)
 
             action_steps = 0
             reset_count = 0
@@ -216,6 +247,8 @@ def main():
                     policy.reset(dones)
                     reset_count += int(dones.sum().item())
                 action_steps += 1
+                if args.soil == "mpm" and action_steps % round(1.0 / env.unwrapped.step_dt) == 0:
+                    soil_progress(env.unwrapped)
                 if args.forward_velocity and action_steps % round(1.0 / env.unwrapped.step_dt) == 0:
                     hits = env.unwrapped.scene["height_scanner"].data.ray_hits_w.torch
                     if not torch.isfinite(hits).all():
@@ -259,6 +292,8 @@ def main():
                     while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
                         action_step()
                         step += 1
+            if args.soil == "mpm":
+                soil_progress(env.unwrapped)
             if args.screenshot_pair or args.screenshot_series:
                 from mars_project.screenshots import capture_screenshot
 

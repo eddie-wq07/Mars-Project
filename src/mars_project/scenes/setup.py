@@ -1,7 +1,7 @@
 """Preview-only scene, lighting and constant-velocity command configuration."""
 
 
-def configure_preview(cfg, appearance, forward_velocity=0.0):
+def configure_preview(cfg, appearance, forward_velocity=0.0, soil="mpm"):
     """Use a constant body-forward command and configure the visual backdrop."""
     cfg.observations.policy.enable_corruption = False
     cfg.events.push_robot = None
@@ -20,7 +20,7 @@ def configure_preview(cfg, appearance, forward_velocity=0.0):
     if appearance == "grand-canyon":
         from mars_project.scenes.canyon import configure_canyon_scene
 
-        configure_canyon_scene(cfg)
+        configure_canyon_scene(cfg, soil=soil)
     if appearance == "earth":
         from mars_project.scenes.earth import configure_earth_scene
 

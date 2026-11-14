@@ -8,7 +8,22 @@ OPTIMIZED_DIR = GRAND_CANYON_DIR / "optimized"
 SKY_SURFACE_CONTRIBUTION = 0.25
 
 
-def configure_canyon_scene(cfg):
+def prepare_soil_renderer():
+    """Select heterogeneous-volume rendering before scenery/camera activation."""
+    import carb.settings
+
+    settings = carb.settings.get_settings()
+    for key, value in {
+        "/rtx/rendermode": "PathTracing",
+        "/rtx/pathtracing/spp": 4,
+        "/rtx/pathtracing/totalSpp": 128,
+        "/rtx/pathtracing/optixDenoiser/enabled": True,
+        "/rtx/pathtracing/ptvol/enabled": True,
+    }.items():
+        settings.set(key, value)
+
+
+def configure_canyon_scene(cfg, soil="mpm"):
     """Spawn scenery and the local collision mesh before physics initializes."""
     from isaaclab_visualizers.kit import KitVisualizerCfg
 
@@ -58,9 +73,12 @@ def configure_canyon_scene(cfg):
     cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
     cfg.events.add_base_mass = None
     cfg.events.base_external_force_torque = None
-    # The old kinematic-column deformation is not a constitutive soil model.
-    # Keep this preview on its actual rigid mesh until the separate two-way
-    # MPM benchmark passes verification and material calibration.
+    if soil == "mpm":
+        from mars_project.environment.mpm_soil import configure_mpm_soil
+
+        configure_mpm_soil(cfg)
+    elif soil != "rigid":
+        raise ValueError(f"Unknown soil model: {soil}")
 
 
 def add_canyon_scene():
@@ -77,14 +95,16 @@ def add_canyon_scene():
             light = UsdLux.LightAPI(prim)
             light.CreateDiffuseAttr(SKY_SURFACE_CONTRIBUTION)
             light.CreateSpecularAttr(SKY_SURFACE_CONTRIBUTION)
-    ground = stage.GetPrimAtPath("/World/ground/terrain/Ground")
+    ground = stage.GetPrimAtPath("/World/envs/env_0/SoilBed/Ground")
+    if not ground:
+        ground = stage.GetPrimAtPath("/World/ground/terrain/Ground")
     if not ground or not ground.HasAPI(UsdPhysics.CollisionAPI):
         raise RuntimeError("Local canyon collision mesh was not loaded")
     if UsdGeom.Imageable(ground).ComputeVisibility() != "invisible":
         raise RuntimeError("Collision-only canyon mesh must be invisible")
     settings = carb.settings.get_settings()
     for key, value in {
-        "/rtx/rendermode": "RealTimePathTracing",
+        "/rtx/rendermode": "PathTracing" if stage.GetPrimAtPath("/World/envs/env_0/SoilBed") else "RealTimePathTracing",
         "/rtx/background/source/type": "domeLight",
         "/rtx/raytracing/showLights": 0,
         "/rtx/raytracing/globalVolumetricEffects/enabled": False,
@@ -92,6 +112,6 @@ def add_canyon_scene():
     }.items():
         settings.set(key, value)
     print(
-        "Canyon: 4K albedo, tiled rock normals, sun/sky lighting; local uneven collision mesh, no flat plane.",
+        "Canyon: 4K albedo, tiled rock normals, sun/sky lighting; local uneven substrate loaded.",
         flush=True,
     )

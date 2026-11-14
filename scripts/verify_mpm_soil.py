@@ -98,7 +98,7 @@ def main():
             "Bed-depth/boundary sensitivity",
             "Calibrated repose, pressure-sinkage and shear curves",
             "Independent material validation",
-            "H1 integration and live soil height sensing",
+            "H1 locomotion validation on calibrated soil",
             "Atmosphere and fine dust not modeled",
         ],
         "checks": checks,
