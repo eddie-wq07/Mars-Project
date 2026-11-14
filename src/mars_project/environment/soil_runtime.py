@@ -12,6 +12,7 @@ import numpy as np
 from mars_project.environment.airborne_dust import Atmosphere, DustParcels
 from mars_project.environment.mpm_soil import DENSITY, THICKNESS, VOXEL_SIZE, X_MAX, X_MIN, Y_MAX, Y_MIN
 from mars_project.environment.regolith import terrain_height
+from mars_project.environment.soil_columns import column_depth, surface_fraction
 
 # Fraction of a detached bulk sample released as suspended fines. This is an
 # uncalibrated entrainment assumption, not the soil's total fine-grain content.
@@ -40,7 +41,7 @@ class SoilRuntime:
         ys = Y_MIN + (np.arange(self.ny) + 0.5) * VOXEL_SIZE
         xx, yy = np.meshgrid(xs, ys)
         self.bed = torch.as_tensor(terrain_height(xx, yy).astype(np.float32) - THICKNESS, device=env.device)
-        self.reference = self.top_grid(self.initial)
+        self.reference = self.column_depth(self.initial, self.base_volume)
         self.mass = self.base_mass.clone()
         self.quiet = torch.zeros(len(self.initial), device=env.device)
         self.displacement = torch.zeros_like(self.bed)
@@ -85,14 +86,20 @@ class SoilRuntime:
         return t.maximum(top.reshape(self.ny, self.nx), self.bed)
 
     def displacement_at(self, xy):
+        return self.sample_grid(self.displacement, xy)
+
+    def column_depth(self, points, volumes):
+        return column_depth(points, volumes, self.nx, self.ny, X_MIN, Y_MIN, VOXEL_SIZE)
+
+    def sample_grid(self, values, xy, padding_mode="zeros"):
         import torch.nn.functional as f
 
         coords = xy.clone()
         coords[:, 0] = 2 * (coords[:, 0] - X_MIN) / (self.nx * VOXEL_SIZE) - 1
         coords[:, 1] = 2 * (coords[:, 1] - Y_MIN) / (self.ny * VOXEL_SIZE) - 1
-        return f.grid_sample(
-            self.displacement[None, None], coords[None, None], align_corners=False, padding_mode="zeros"
-        )[0, 0, 0]
+        return f.grid_sample(values[None, None], coords[None, None], align_corners=False, padding_mode=padding_mode)[
+            0, 0, 0
+        ]
 
     def heights_numpy(self, xy):
         coords = self.torch.as_tensor(xy, dtype=self.initial.dtype, device=self.initial.device)
@@ -205,11 +212,12 @@ class SoilRuntime:
                 sources,
             )
             self.mass[accepted] -= available[accepted]
-        top = self.top_grid(points[~detached])
-        self.displacement = top - self.reference
-        # Compact reconstruction kernel removes the voxel-sized stair steps. No
-        # footprint prescription: only solved MPM displacements drive the surface.
-        self.displacement = f.avg_pool2d(self.displacement[None, None], 3, 1, 1)[0, 0]
+        # A constant-bulk-density shallow-layer approximation: vertical jitter
+        # does not change volume/area. Only redistribution or separated material
+        # changes the surface, with no velocity-sign switch at a ballistic apex.
+        ground = self.sample_grid(self.bed + THICKNESS + self.displacement, points[:, :2], "border")
+        fraction = surface_fraction(points[:, 2], ground, self.soil.cfg.spawn.radius, VOXEL_SIZE)
+        self.displacement = self.column_depth(points, self.mass / DENSITY * fraction) - self.reference
         self.displacement += self.deposited_height
         # Undisturbed terrain outside the local physics domain is the identical
         # source mesh. A buried three-cell guard remains at that source elevation.

@@ -67,7 +67,7 @@ def parse_args():
         "--screenshot-requested",
         "--capture-requested",
         action="store_true",
-        help="Mark screenshots as explicitly requested by the user; otherwise save under date/misc",
+        help="Mark screenshots as explicitly requested by the user; otherwise save under recordings/misc/date",
     )
     parser.add_argument("--record", metavar="LABEL", help="Record --steps as a 25-fps MP4 in a LABEL folder")
     parser.add_argument(

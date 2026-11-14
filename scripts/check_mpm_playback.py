@@ -24,7 +24,7 @@ def main():
     from isaaclab_tasks.utils import parse_env_cfg
 
     import mars_project.tasks  # noqa: F401
-    from mars_project.environment.mpm_soil import mpm_height_scan, soil_progress, verify_soil_loaded
+    from mars_project.environment.mpm_soil import THICKNESS, mpm_height_scan, soil_progress, verify_soil_loaded
     from mars_project.scenes.setup import configure_preview
 
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=["physics=newton_mjwarp"])
@@ -44,7 +44,7 @@ def main():
             rigid_scan = sensor.data.pos_w.torch[:, 2, None] - sensor.data.ray_hits_w.torch[..., 2] - 0.5
             live_scan = mpm_height_scan(env, SceneEntityCfg("height_scanner"))
             assert torch.isfinite(live_scan).all()
-            assert torch.max(rigid_scan - live_scan) > 0.1, "Policy does not see the MPM layer"
+            assert torch.max(rigid_scan - live_scan) > 0.9 * THICKNESS, "Policy does not see the MPM layer"
             zeros = torch.zeros((1, env.action_manager.total_action_dim), device=env.device)
             peak_force = 0.0
             with torch.inference_mode():

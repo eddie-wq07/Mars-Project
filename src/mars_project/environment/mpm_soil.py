@@ -1,7 +1,7 @@
 """Experimental two-way Newton MPM soil for the single-environment canyon preview.
 
 Material values are provisional. Loading/coupling is not material validation.
-The substrate is lowered so the 16 cm soil layer replaces the original terrain.
+The substrate is lowered so a shallow 4 cm sand layer replaces the original terrain.
 """
 
 import json
@@ -14,9 +14,26 @@ from mars_project.scenes.canyon import OPTIMIZED_DIR
 
 X_MIN, X_MAX = -1.5, 5.0
 Y_MIN, Y_MAX = -2.0, 2.0
-THICKNESS = 0.16
+THICKNESS = 0.04
 VOXEL_SIZE = 0.04
 DENSITY = 1400.0
+# Explicit dry-sand scenario; see sources.md. These values preserve mars-4's
+# material law. A shallower firm substrate limits the available yielding depth.
+SOIL_MATERIAL = dict(
+    density=DENSITY,
+    young_modulus=1e7,
+    poisson_ratio=0.3,
+    friction=0.68,
+    yield_pressure=1e12,
+    tensile_yield_ratio=0.0,
+    yield_stress=0.0,
+    damping=0.0,
+    viscosity=0.0,
+    hardening=0.0,
+    dilatancy=0.0,
+    hardening_rate=1.0,
+    softening_rate=1.0,
+)
 ROBOT_PATTERN = r"/World/envs/env_.*/Robot"
 BED_PATTERN = r"/World/envs/env_.*/SoilBed"
 # PhysX ordering used by the existing rough-H1 checkpoint and recorded baseline.
@@ -139,7 +156,7 @@ def configure_mpm_soil(cfg):
             mass=mass,
             radius=radius,
             visible=False,
-            material=MPMParticleMaterialCfg(density=DENSITY, young_modulus=1e7, friction=0.68),
+            material=MPMParticleMaterialCfg(**SOIL_MATERIAL),
             visual_color=(0.47, 0.20, 0.09),
             visual_material=sim.PreviewSurfaceCfg(diffuse_color=(0.47, 0.20, 0.09), roughness=0.95),
         ),
@@ -311,6 +328,8 @@ def verify_soil_loaded(env):
                 density_kg_m3=DENSITY,
                 voxel_size_m=VOXEL_SIZE,
                 thickness_m=THICKNESS,
+                material=SOIL_MATERIAL,
+                surface_model="depth_averaged_volume",
                 coupling="two_way",
                 visualization="continuous_textured_terrain",
                 material_validated=False,
@@ -359,6 +378,12 @@ def soil_progress(env):
         print(
             f"DUST_MODEL max_resolved_dust_gas_mass_ratio={runtime.dust_loading:.6f} "
             f"peak_dust_gas_mass_ratio={runtime.peak_dust_loading:.6f} validated_material=False",
+            flush=True,
+        )
+        print(
+            f"REGOLITH_SURFACE min_displacement_m={float(runtime.displacement.min()):.6f} "
+            f"max_displacement_m={float(runtime.displacement.max()):.6f} "
+            f"layer_depth_m={THICKNESS} reconstruction=depth_averaged_volume",
             flush=True,
         )
     return force

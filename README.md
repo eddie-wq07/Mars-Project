@@ -298,12 +298,12 @@ Investigation logs: `outputs/log/lighting-investigation-zaMBMW.log`,
 `outputs/log/lighting-height-investigation-5dh4Gu.log`, and
 `outputs/log/lighting-startup-investigation-TuAHZm.log`. The original failed recording's
 log is `outputs/log/earth-6-level-camera-6ZhE5T.log`; keep it and the original video.
-Diagnostic stills are under `outputs/recordings/11-13-2026/misc/` with `lighting-diag`
+Diagnostic stills are under `outputs/recordings/misc/11-13-2026/` with `lighting-diag`
 in their names. `tests/test_camera_settings.py` checks stale exposure/sampling overrides
 and lens preservation, but does not replace fresh-process rendered verification.
 
 Verification after hardening: the six-second `earth-6/2:03pm_earth-6-orbit.mp4` and a
-second fresh-process one-second `misc/2:05pm_lighting-startup-repeat-orbit.mp4` both
+second fresh-process one-second `outputs/recordings/misc/11-13-2026/2:05pm_lighting-startup-repeat-orbit.mp4` both
 rendered with illuminated ground and visible robot surfaces. Inspected frames at 0,
 3 and 5 seconds in the full recording, and 0.5 seconds in the repeat. Logs:
 `outputs/log/earth-6-lighting-startup-fixed-d33Y7U.log` and
@@ -325,10 +325,10 @@ view state and compare fixed-pose renders before/after a single change; do not d
 another fixed-frame delay a proven fix or silently raise exposure.
 
 Screenshot organization: captures made for diagnostics or verification without an explicit user request
-must go in `outputs/recordings/MM-DD-YYYY/misc/`. This is the default for both single captures and
+must go in `outputs/recordings/misc/MM-DD-YYYY/`. This is the default for both single captures and
 pairs, including Python calls to `capture_screenshot()`. Use `--screenshot-requested` (Python:
 `requested=True`) only when the user explicitly asks for screenshots. Requested pairs use their label
-folder; diagnostic pairs both go directly in `misc/`. Date, timestamp, labels and collision avoidance
+folder; diagnostic pairs both go in the same daily folder under `misc/`. Date, timestamp, labels and collision avoidance
 work the same in either destination. A request to diagnose or fix something is not itself a request
 for screenshots.
 
@@ -336,7 +336,10 @@ for screenshots.
 
 - `outputs/log/`: all `.log` files from runs, smoke checks and diagnostics.
 - `outputs/lighting/`: standalone lighting comparisons, sky images and render PNG assets.
-- `outputs/recordings/MM-DD-YYYY/`: screenshot-pipeline captures; unsolicited diagnostic captures go in `misc/`, while explicitly requested captures retain their requested grouping.
+- `outputs/recordings/MM-DD-YYYY/`: explicitly requested captures, retaining their requested grouping.
+- `outputs/recordings/misc/MM-DD-YYYY/`: diagnostic screenshots and videos, grouped by day.
+
+All diagnostic captures use this single `outputs/recordings/misc/` hierarchy; no other `misc` folders or aliases are created.
 
 Keep the `outputs/` root free of loose logs and PNG files. These conventions are also recorded in
 `AGENTS.md` for future work. For example, run a policy smoke check with its log in the correct folder:
@@ -370,7 +373,7 @@ Record five simulation seconds (250 control steps) as a single 1080p, 25-fps H.2
 ```
 
 `--capture-requested` is an alias for `--screenshot-requested`. Requested videos go in
-`outputs/recordings/MM-DD-YYYY/earth-test-3/`; unrequested videos go in the date's `misc/` folder.
+`outputs/recordings/MM-DD-YYYY/earth-test-3/`; unrequested videos go in `outputs/recordings/misc/MM-DD-YYYY/`.
 All previous screenshot folders were moved from `outputs/screenshots` to `outputs/recordings`.
 MP4 uses H.264 with `yuv420p` and fast-start metadata for Mac playback. Download the file to the Mac
 (or copy it with `scp` from a Mac terminal) and open it in QuickTime. SSH itself does not stream a GUI.
@@ -468,16 +471,24 @@ rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
 
 ### MPM soil in canyon playback
 
-`--appearance grand-canyon` replaces the local terrain with a buried, 16 cm deep
-MPM soil domain (6.5 × 4 m). Its 520,000 material samples represent 5,824 kg at the
+`--appearance grand-canyon` replaces the local terrain with a buried, 4 cm deep
+MPM soil domain (6.5 × 4 m). Its 130,000 material samples represent 1,456 kg at the
 provisional 1,400 kg/m³ bulk density. The 4 cm computational voxels and 2 cm sample
 spacing are bulk discretization, **not grain dimensions**, and are never rendered.
 
 A continuous mesh replaces the corresponding original canyon triangles. Its boundary
 matches their elevations and photographic UVs, with the same material on the surrounding
 terrain. Sand normals use a 0.256 m texture tile (0.25 mm per texel), with a matte finish.
-The visible surface and policy height observations use the same reconstruction of solved
-soil displacement. No raised slab, exposed side faces, overlapping terrain sheet or
+The visible surface and policy height observations share a depth-averaged reconstruction:
+quadratic weights project material volume into columns, with height = volume / area.
+This assumes approximately constant bulk density and omits elastic volume changes.
+Horizontal redistribution produces persistent ruts and piles; vertical particle jitter
+does not raise the terrain sheet. Separated bulk material fades geometrically from the
+surface, independently of its vertical velocity sign. MPM still solves 3D contact forces.
+The firm substrate is 4 cm below the original terrain, limiting available loose-sand depth;
+this is an explicit shallow-sand scenario, not a calibrated universal Martian soil.
+The original `mars-4` material and fixed texture coordinates are retained. Parameters and
+sources are in [sources.md](sources.md). No raised slab, exposed side faces, overlapping terrain sheet or
 visible rectangular particle perimeter is authored.
 
 `environment/soil_runtime.py` uses Newton's native active flags: material near the
@@ -549,6 +560,20 @@ also checks live sensing, interaction and reset; add `--visualizer kit --kit_arg
 to check synchronization of the terrain surface vertices. Use `--soil rigid` with the
 scene runner for the old rigid-ground baseline. Earth appearance remains rigid by default.
 
+November 14 shallow-regolith verification: all 33 tests passed, including volume conservation,
+subcell transport, persistent ruts and rejection of vertical-jitter/apex artifacts. A seven-second
+policy run advanced 2.51 m with zero resets and conserved soil/dust mass. The separate Kit check
+verified interaction, unchanged distant particles, live height observations, rendered geometry and reset.
+Evidence: [unit tests](outputs/log/shallow-regolith-tests-20261114-094417-329069906.log),
+[walking check](outputs/log/shallow-regolith-walk-20261114-094425-614441228.log), and
+[rendered reset check](outputs/log/shallow-regolith-reset-20261114-094534-119226499.log).
+The [complete two-second diagnostic clip](outputs/recordings/misc/11-14-2026/9:46am_shallow-regolith-review-orbit.mp4)
+contains 50 decoded frames at 3840 × 2160 / 25 fps. Inspected frames show illuminated terrain and
+subtle residual trails; the recorded three-second simulation (including warmup) had no resets.
+Final reconstructed extrema were -3.30 cm / +1.54 cm; these are local extrema, not average sinkage.
+The [render log](outputs/log/shallow-regolith-video-20261114-094609-456962682.log) records the exact material
+parameters. This verifies the assumed shallow-sand implementation, not experimental calibration.
+
 November 13 verification of the continuous terrain and airborne-fines version: the
 seven-second headless run used the same checkpoint, configuration and 0.5 m/s command
 as recording. H1 advanced 1.85 m in +X with zero resets and finite observations.
@@ -588,7 +613,7 @@ checks, not calibrated sinkage or sustained-walking results. All 25 regression t
 and Ruff checks passed. Evidence:
 [integration log](outputs/log/mpm-playback-check-20261113-210928-633246234.log),
 [policy log](outputs/log/mpm-h1-walk-20261113-211159-194712597.log), and
-[diagnostic frame](outputs/recordings/11-13-2026/misc/9:12pm_mpm-h1-walk.png).
+[diagnostic frame](outputs/recordings/misc/11-13-2026/9:12pm_mpm-h1-walk.png).
 
 ### Soil physics verification
 
@@ -655,8 +680,8 @@ and unvalidated scope. The retired
 `check_regolith.py` now requires `--legacy-heuristic` to reproduce its old checks.
 
 Requested named experiments now go to `outputs/recordings/MM-DD-YYYY/earth/earth-*`
-or `outputs/recordings/MM-DD-YYYY/mars/mars-*`. Unsolicited diagnostics stay in that
-date's `misc/`. Existing November 13 Earth folders were moved intact under `earth/`.
+or `outputs/recordings/MM-DD-YYYY/mars/mars-*`. Unsolicited diagnostics go in
+`outputs/recordings/misc/MM-DD-YYYY/`. Existing November 13 Earth folders were moved intact under `earth/`.
 
 ```bash
 mkdir -p outputs/log

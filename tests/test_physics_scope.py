@@ -32,7 +32,7 @@ def test_canyon_defaults_to_coupled_mpm_without_changing_motor_gains():
     configure_canyon_scene(cfg)
     assert cfg.scene.terrain is None
     assert cfg.scene.soil_bed.spawn.usd_path.endswith("local_ground.usdc")
-    assert len(cfg.scene.soil.spawn.positions) == 520000
+    assert len(cfg.scene.soil.spawn.positions) == 130000
     assert cfg.scene.robot.init_state.pos[2] == pytest.approx(1.05)
     assert cfg.scene.contact_forces is None
     assert cfg.terminations.soil_fall is not None

@@ -16,7 +16,7 @@ def screenshot_path(
     requested: bool = False,
     suffix: str = ".png",
 ) -> Path:
-    """Route unsolicited captures to date/misc; preserve requested destinations and avoid overwrites."""
+    """Route diagnostics to recordings/misc/date; preserve requested destinations and avoid overwrites."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", label):
         raise ValueError("Screenshot label must contain only letters, numbers, hyphens or underscores")
     if suffix not in (".png", ".mp4"):
@@ -25,14 +25,16 @@ def screenshot_path(
     hour = taken_at.hour % 12 or 12
     period = "am" if taken_at.hour < 12 else "pm"
     stamp = f"{hour}:{taken_at:%M}{period}"
-    folder = Path(__file__).resolve().parents[2] / "outputs" / "recordings" / f"{taken_at:%m-%d-%Y}"
+    root = Path(__file__).resolve().parents[2] / "outputs" / "recordings"
+    folder = root / f"{taken_at:%m-%d-%Y}"
     if not requested:
-        subfolder = "misc"
+        folder = root / "misc" / f"{taken_at:%m-%d-%Y}"
+        subfolder = None
     if subfolder:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", subfolder):
             raise ValueError("Screenshot subfolder must be a single folder name")
         # Requested experiment folders are grouped by environment. Diagnostics
-        # remain directly under date/misc, even when their labels mention Mars.
+        # remain under misc/date, even when their labels mention Mars.
         group = re.match(r"^(earth|mars)(?:-|$)", subfolder) if requested else None
         if group:
             folder = folder / group[1]

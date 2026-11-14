@@ -11,4 +11,4 @@ def test_requested_groups_and_diagnostic_routing():
         path = screenshot_path(f"{group}-1-orbit", date, f"{group}-1", requested=True, suffix=".mp4")
         assert path.parts[-4:] == ("01-02-2030", group, f"{group}-1", f"11:05am_{group}-1-orbit.mp4")
         diagnostic = screenshot_path(f"{group}-check", date, f"{group}-check", suffix=".mp4")
-        assert diagnostic.parts[-3:] == ("01-02-2030", "misc", f"11:05am_{group}-check.mp4")
+        assert diagnostic.parts[-4:] == ("recordings", "misc", "01-02-2030", f"11:05am_{group}-check.mp4")
