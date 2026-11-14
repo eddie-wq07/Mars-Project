@@ -1,7 +1,7 @@
 """Preview-only scene, lighting and constant-velocity command configuration."""
 
 
-def configure_preview(cfg, appearance, forward_velocity=0.0, soil="mpm"):
+def configure_preview(cfg, appearance, forward_velocity=0.0, soil="mpm", air_drag="auto"):
     """Use a constant body-forward command and configure the visual backdrop."""
     cfg.observations.policy.enable_corruption = False
     cfg.events.push_robot = None
@@ -25,3 +25,6 @@ def configure_preview(cfg, appearance, forward_velocity=0.0, soil="mpm"):
         from mars_project.scenes.earth import configure_earth_scene
 
         configure_earth_scene(cfg)
+    from mars_project.environment.air_drag import configure_air_drag
+
+    configure_air_drag(cfg, air_drag)

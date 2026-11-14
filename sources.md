@@ -1,6 +1,6 @@
 # Environment physics: sources and assumptions
 
-Based on `b6ecf1a` (`mars-4`); shallow-regolith update 2026-11-14. Atmosphere changes remain planned.
+Based on `b6ecf1a` (`mars-4`); shallow-regolith and robot atmospheric-drag updates 2026-11-14.
 
 - Assumed dry, cohesionless sand; retain `mars-4` appearance with slight, persistent deformation and no bouncing.
 - Values are **current settings** unless marked **planned**; this is not a calibrated universal Mars soil.
@@ -56,14 +56,18 @@ lists Pathfinder/Sojourner **1290–1520 kg/m³ density, 30–40° friction angl
 | Wind | **0 m/s** | **0 m/s** |
 
 - Scenario references: [NASA](https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html) gives Mars **400–870 Pa**, **0.016 ± 0.006 kg/m³**, average **≈214 K**.
-- **Planned robot drag:** `F = ½ρCdA|v_rel|²`, opposing motion; projected area from link geometry. [NASA equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/drag-equation/)
+- **Implemented robot drag:** `F = −½ρCdA|v_rel|v_rel`, where `v_rel = v_link − wind`. [NASA equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/drag-equation/)
+- Each of H1's **20 links** uses its visual-geometry bounding box, projected along airflow: `A = |nx|dy·dz + |ny|dx·dz + |nz|dx·dy`, with unit flow direction `n` in the link frame.
+- Forces act at each link's centre of mass through the simulator's additive external-force API. The unchanged PPO still outputs **19 joint actions**.
 - Assume **`Cd = 1`**, identical across environments; this is not a measured H1 coefficient.
 - Equal speed/area/coefficient gives **≈98.75% less Mars drag** with these densities.
-- **Current drag acts on dust only**; explicit robot aerodynamic forces are not implemented.
+- Simple approximation: uniform still air; no lift, wake shielding, spin torque or aerodynamic buoyancy. Bounding boxes overestimate some silhouettes; link overlap is not subtracted.
+- Forces refresh every **5 ms** with the current H1 settings and remain applied through solver substeps (**20 ms** if a backend owns four-step decimation; logged at startup). No CFD is solved.
+- `--air-drag auto` follows gravity; `earth`, `mars`, or `off` override **robot drag only** for controlled checks. Existing dust atmosphere continues to follow gravity.
 - **Motor damping unchanged:** `--joint-resistance-scale 0`; the disabled heuristic uses Mars `0.020 kg/m³`, adding **0** damping.
 - Dust assumptions: radii **1/2/5/10 µm**, mass weights **10/40/35/15%**, grain density **2500 kg/m³**, release fraction **10⁻⁶**.
 - Dust uses slip-corrected Stokes drag; release, viscosity, grain distribution and appearance are assumptions.
-- Implementation: [airborne_dust.py](src/mars_project/environment/airborne_dust.py), [resistance.py](src/mars_project/environment/resistance.py).
+- Implementation: [aerodynamics.py](src/mars_project/environment/aerodynamics.py), [air_drag.py](src/mars_project/environment/air_drag.py), [airborne_dust.py](src/mars_project/environment/airborne_dust.py). Startup logs record density, coefficient, wind and every link's dimensions.
 
 ## Experiment scope
 

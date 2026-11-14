@@ -8,7 +8,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class EnvironmentProfile:
     name: str
-    air_density: float  # kg/m^3; also used by the independent dust drag model
+    air_density: float  # kg/m^3; legacy ratio only, not the physical robot/dust gas model
     added_joint_damping: float  # N m s/rad, at resistance scale 1
 
 

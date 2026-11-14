@@ -29,6 +29,12 @@ def parse_args():
     )
     parser.add_argument("--steps", type=int, default=0, help="0 runs until the window closes")
     parser.add_argument(
+        "--air-drag",
+        choices=["auto", "earth", "mars", "off"],
+        default="auto",
+        help="Robot aerodynamic drag; auto follows gravity. Overrides affect robot drag only, not dust.",
+    )
+    parser.add_argument(
         "--soil",
         choices=["mpm", "rigid"],
         default=None,
@@ -149,7 +155,7 @@ def main():
     backend = "newton_mjwarp" if args.soil == "mpm" else "isaacsim_physx"
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=[f"physics={backend}"])
     cfg.sim.gravity = (0.0, 0.0, -3.71 if args.gravity == "mars" else -9.81)
-    configure_preview(cfg, args.appearance, args.forward_velocity, soil=args.soil)
+    configure_preview(cfg, args.appearance, args.forward_velocity, soil=args.soil, air_drag=args.air_drag)
     from mars_project.environment.resistance import apply_joint_resistance, environment_profile
 
     profile = environment_profile(args.gravity)
@@ -257,9 +263,11 @@ def main():
                         )
                     command = env.unwrapped.command_manager.get_command("base_velocity")[0].tolist()
                     position = env.unwrapped.scene["robot"].data.root_pos_w.torch[0].tolist()
+                    drag_force = env.unwrapped.air_drag.force_w[0].sum(dim=0).tolist()
                     print(
                         f"WALK_PROGRESS seconds={action_steps * env.unwrapped.step_dt:.2f} "
-                        f"command={command} position={position} resets={reset_count} height_rays_finite=True",
+                        f"command={command} position={position} resets={reset_count} height_rays_finite=True "
+                        f"air_drag_force_n={drag_force}",
                         flush=True,
                     )
 

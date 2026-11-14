@@ -129,7 +129,7 @@ flowchart TD
     capture["2. VERIFIED: Scene and capture<br/>Local rigid collision meshes.<br/>Smooth orbit; Mac-ready MP4.<br/>Video does not validate soil."]
     solver["3. EXPERIMENTAL: Soil solver<br/>Newton MPM now loads in canyon playback.<br/>Two-way H1 coupling and live heights.<br/>Grid and timestep checks still fail."]
     calibration["4. PENDING: Dry loose sand<br/>Check grid and timestep convergence.<br/>Calibrate sinkage, shear and repose.<br/>No validated Mars soil preset yet."]
-    air["5. PENDING: Atmosphere<br/>Keep motor gains unchanged.<br/>Model forces from relative airflow.<br/>Joint damping is not air drag."]
+    air["5. IMPLEMENTED: Atmosphere<br/>Per-link quadratic drag; assumed Cd = 1.<br/>Earth/Mars ideal-gas reference densities.<br/>Force integration verified; motor gains preserved."]
     grains["6. EXPERIMENTAL: Airborne fines<br/>Mass transfers from detached soil.<br/>Micron parcels, gravity and gas drag.<br/>Release rate still needs calibration."]
     test["7. EXPERIMENTAL: H1 on MPM<br/>Forces, terrain sensing and reset connected.<br/>Validate Earth on the same solver.<br/>Then measure Mars slip and falls."]
     compare["8. PENDING: Comparison<br/>Same policy, route and command.<br/>Compare measured trajectories.<br/>Record after physics checks pass."]
@@ -143,8 +143,8 @@ flowchart TD
     classDef pending fill:#dbeafe,stroke:#2563eb,color:#172554;
     classDef retired fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
     class earth,capture verified;
-    class solver,grains,test experimental;
-    class calibration,air,compare pending;
+    class solver,air,grains,test experimental;
+    class calibration,compare pending;
     class retired retired;
 ```
 
@@ -162,7 +162,10 @@ flowchart TD
 
 ## Remaining implementation order
 
-Follow the Current state flowchart: solver verification → material calibration → physical atmosphere and ejected material → H1 validation → measured comparison.
+Next is the agreed **100 trials per condition**, with a **5 m goal**, **0.5 m tolerance**
+and **30 s timeout**, using the same rigid-body backend for comparison. Keep the accepted
+shallow regolith and explicit assumptions in [sources.md](sources.md); further material
+calibration remains a fidelity limitation, not a requirement to add a more complex solver.
 
 ## Run the existing preview
 
@@ -197,6 +200,7 @@ scripts/benchmark_mpm_soil.py     Headless coupled soil/foot experiment
 scripts/verify_mpm_soil.py        Numerical controls and refinement checks
 scripts/check_mpm_playback.py     Loaded H1/soil interaction, sensing and reset check
 scripts/check_soil_walk.py        Seven-second policy, local soil and dust conservation check
+scripts/check_air_drag.py         Robot momentum, additive force and reset checks on both backends
 src/mars_project/
   scene_runner.py                CLI, simulator lifecycle, checkpoint inference and stepping
   tasks/h1.py                    H1 environment/PPO configuration and Gym registration
@@ -208,6 +212,8 @@ src/mars_project/
   environment/soil_runtime.py    Contact-local activation, persistent terrain state and dust transfer
   environment/soil_surface.py    Continuous terrain mesh and fine sand material
   environment/airborne_dust.py   Mass-carrying aerosol parcels with gravity and gas drag
+  environment/aerodynamics.py   Link geometry areas, atmosphere density and quadratic drag
+  environment/air_drag.py       Robot external-force integration; zero extra policy inputs
   environment/dust_volume.py     Conservative extinction grid and native Kit volume rendering
   environment/                  Also retains legacy deformation/dust and opt-in damping
   assets/scene_paths.py          Runtime paths and USD dependency validation
@@ -675,7 +681,23 @@ Their previous tests verified implementation behavior, not soil constitutive law
 Existing Mars recordings do not establish realistic sinkage, traction or dust behavior.
 `--joint-resistance-scale` now defaults to **0**, preserving the original motor
 gains on both planets. Nonzero values explicitly opt into the old damping heuristic;
-they are not aerodynamic forces. The Mars launcher logs its selected soil model
+they are not aerodynamic forces. Preview now applies **physical robot drag** separately:
+`F = −½ρCdA|v_rel|v_rel` at each link's centre of mass, using projected visual-box
+area, `Cd = 1` and still air. `--air-drag auto` selects density from gravity
+(Earth ≈1.225 kg/m³; Mars ≈0.0154 kg/m³); `--air-drag earth|mars|off` overrides
+robot drag alone. Dust retains its gravity-selected atmosphere. The same PPO
+action space and motor gains are preserved. Forces refresh every 5 ms with current
+H1 settings (20 ms if the backend owns four-step decimation), remaining applied
+through solver substeps. This simple model omits wake shielding, lift and spin torque; see
+[sources.md](sources.md) for assumptions and references. Air resistance at walking
+speeds is small, so a dramatic visual gait difference is not expected from drag alone.
+
+`scripts/check_air_drag.py --backend newton_mjwarp` checks measured momentum
+against force impulse in free flight, force composition and reset; use
+`--backend isaacsim_physx --visualizer kit --kit_args=--no-window` for the PhysX check.
+Add `--soil mpm` to the Newton check to verify forces through the actual soil coupler.
+Store redirected check output in `outputs/log/`.
+The Mars launcher logs its selected soil model
 and unvalidated scope. The retired
 `check_regolith.py` now requires `--legacy-heuristic` to reproduce its old checks.
 
