@@ -34,8 +34,8 @@ def parse_args():
     parser.add_argument(
         "--joint-resistance-scale",
         type=float,
-        default=1.0,
-        help="Scale added Earth/Mars joint damping; 0 keeps original motor gains (not an air-drag model)",
+        default=0.0,
+        help="Legacy heuristic, disabled by default; 0 preserves motor gains. This is NOT atmospheric drag.",
     )
     parser.add_argument(
         "--checkpoint", help="Optional trained rough-H1 RSL-RL checkpoint; otherwise zero-action preview"
@@ -120,6 +120,13 @@ def main():
 
     profile = environment_profile(args.gravity)
     apply_joint_resistance(cfg, profile, args.joint_resistance_scale)
+    if args.appearance == "grand-canyon":
+        print(
+            "PHYSICS_SCOPE ground=rigid_mesh soil_model=none atmospheric_forces=none "
+            "cosmetic_dust=disabled; this preview does not predict loose-sand sinkage or traction. "
+            "Two-way soil verification runs separately in scripts/benchmark_mpm_soil.py.",
+            flush=True,
+        )
     with launch_simulation(cfg, args):
         if args.appearance == "earth":
             from mars_project.scenes.earth import prepare_earth_renderer
@@ -168,11 +175,6 @@ def main():
                 for _ in range(3):
                     env.unwrapped.sim.render()
                 log_view_settings(stage, viewport)
-            dust = None
-            if args.appearance == "grand-canyon":
-                from mars_project.environment.dust import FootstepDust
-
-                dust = FootstepDust(env.unwrapped, profile)
             policy = None
             observations = None
             if args.checkpoint:
@@ -213,11 +215,6 @@ def main():
                     observations, _, dones, _ = env.step(policy(observations))
                     policy.reset(dones)
                     reset_count += int(dones.sum().item())
-                if dust is not None:
-                    if dones.any():
-                        dust.clear()
-                    else:
-                        dust.update(env.unwrapped.step_dt)
                 action_steps += 1
                 if args.forward_velocity and action_steps % round(1.0 / env.unwrapped.step_dt) == 0:
                     hits = env.unwrapped.scene["height_scanner"].data.ray_hits_w.torch
@@ -262,19 +259,6 @@ def main():
                     while env.unwrapped.sim.is_running() and (not args.steps or step < args.steps):
                         action_step()
                         step += 1
-            if hasattr(env.unwrapped, "sand"):
-                sand = env.unwrapped.sand
-                delta = sand.field.heights - sand.field.initial
-                print(
-                    f"SAND_RESULT displaced_m3={sand.total_displaced:.7f} "
-                    f"max_indent_m={-delta.min():.5f} max_ridge_m={delta.max():.5f}",
-                    flush=True,
-                )
-            if dust is not None:
-                print(
-                    f"DUST_RESULT emitted={dust.cloud.total_emitted} active={int((dust.cloud.life > 0).sum())}",
-                    flush=True,
-                )
             if args.screenshot_pair or args.screenshot_series:
                 from mars_project.screenshots import capture_screenshot
 

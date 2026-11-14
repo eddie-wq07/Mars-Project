@@ -1,4 +1,4 @@
-"""Fine-sand geometry, localized pressure deformation and mass balance."""
+"""Legacy surface bookkeeping checks; these do not validate soil mechanics."""
 
 import numpy as np
 from pxr import Usd, UsdGeom, UsdPhysics

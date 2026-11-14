@@ -58,9 +58,9 @@ def configure_canyon_scene(cfg):
     cfg.events.reset_robot_joints.params["velocity_range"] = (0.0, 0.0)
     cfg.events.add_base_mass = None
     cfg.events.base_external_force_torque = None
-    from mars_project.environment.regolith import configure_regolith
-
-    configure_regolith(cfg)
+    # The old kinematic-column deformation is not a constitutive soil model.
+    # Keep this preview on its actual rigid mesh until the separate two-way
+    # MPM benchmark passes verification and material calibration.
 
 
 def add_canyon_scene():

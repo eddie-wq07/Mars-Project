@@ -1,4 +1,4 @@
-"""Build continuous fine-sand visuals and matching movable contact columns."""
+"""Rebuild the retired heuristic's assets; these are not used by playback."""
 
 import numpy as np
 from PIL import Image

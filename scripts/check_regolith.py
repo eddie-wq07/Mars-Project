@@ -1,4 +1,4 @@
-"""No-policy loaded-foot test of physical, visible and sensed sand deformation."""
+"""Legacy prescribed-deformation check; this does NOT validate soil mechanics."""
 
 import argparse
 
@@ -7,9 +7,12 @@ from isaaclab.app import add_launcher_args, launch_simulation
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--legacy-heuristic", action="store_true", help="Reproduce the retired kinematic-column test")
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
     args = parser.parse_args()
+    if not args.legacy_heuristic:
+        parser.error("Retired heuristic test. Use scripts/verify_mpm_soil.py for solver verification.")
     import gymnasium as gym
     import numpy as np
     import torch
@@ -20,11 +23,12 @@ def main():
     from isaaclab_tasks.utils import parse_env_cfg
 
     import mars_project.tasks  # noqa: F401
-    from mars_project.environment.regolith import CELL, COLUMN_DEPTH
+    from mars_project.environment.regolith import CELL, COLUMN_DEPTH, configure_regolith
     from mars_project.scenes.setup import configure_preview
 
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=["physics=isaacsim_physx"])
     configure_preview(cfg, "grand-canyon")
+    configure_regolith(cfg)
     cfg.scene.robot.init_state.pos = (-1.0, 1.5, 1.05)
     cfg.scene.probe = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Probe",
@@ -65,7 +69,7 @@ def main():
             env.reset()
             assert np.allclose(sand.field.heights, sand.field.initial)
             print(
-                f"SAND_CHECK passed foot_drop={before - after:.5f} "
+                f"LEGACY_HEURISTIC_CHECK not_material_validation foot_drop={before - after:.5f} "
                 f"volume_error={volume:.3g} physical_visible_heights_match=True",
                 flush=True,
             )

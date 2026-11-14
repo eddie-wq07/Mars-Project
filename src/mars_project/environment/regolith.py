@@ -1,7 +1,7 @@
-"""Fine-sand surface with local pressure-driven compaction and displaced rims.
+"""Legacy, inactive prescribed surface deformation; NOT validated soil mechanics.
 
-A continuum approximation on 5 cm contact columns, NOT individual sand-grain DEM.
-Visual vertices and height observations use physical column elevations; visuals interpolate between centers.
+Retained for provenance and old artifact checks, disconnected from scene playback.
+Column elevations are prescribed heuristically rather than solved from stresses.
 """
 
 from functools import lru_cache

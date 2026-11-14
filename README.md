@@ -5,7 +5,8 @@ Run one pretrained H1 walking policy on Earth and Mars, then compare outcomes.
 ## End goal
 
 1. **Earth:** Walk straight for roughly 5–10 footsteps in the Poly Haven scene.
-2. **Mars:** Run the same checkpoint with Mars gravity and, later, dust, reduced drag, and loose regolith.
+2. **Mars:** Run the same checkpoint on calibrated dry, loose sand under Mars gravity;
+   model atmosphere and ejected material physically.
 3. **Findings:** Compare success over 100 trajectories per environment using the same target distance.
 4. **Recording:** Save short videos for visual iteration, then produce final comparison footage.
 
@@ -66,7 +67,8 @@ migration before creating the runner. Fixed USD scenes retain height sensing and
 curriculum. Earth/Mars gravity and appearance are scene overrides, not separate policy tasks.
 
 Step 9 verification covers loading and a short simulation run, **not stable walking**. The current command
-is still zero velocity; without `--checkpoint`, the launcher sends zero actions instead of using a policy.
+defaults to zero velocity; `--forward-velocity` commands walking. Without `--checkpoint`,
+the launcher sends zero actions instead of using a policy.
 
 
 ## Flowchart
@@ -119,26 +121,34 @@ observations, rewards and episode resets. The project runner does not implement 
 
 ## Current state
 
-Gray = existing baseline. Blue = planned work.
+Green = verified scope. Amber = experimental. Blue = pending. Red = retired.
 
 ```mermaid
 flowchart TD
-    earth["1. VERIFIED: Earth walking<br/>Rough-H1 command: 0.5 m/s.<br/>Six-second clip; zero resets.<br/>Terrain sensing stayed valid."]
-    capture["2. READY: Ground and video<br/>Local trail collision mesh.<br/>Smooth orbit; Mac-ready MP4.<br/>Check lighting each run."]
-    mars["3. READY: Local Mars terrain<br/>Mars gravity and fixed +X start.<br/>6.5 × 4 m corridor, 5 cm sampling.<br/>Matches the existing scenery surface."]
-    soil["4. READY: Moving regolith<br/>Fine-grain textured surface.<br/>Foot pressure displaces sand.<br/>Contact and sensing follow height."]
-    damping["5. READY: Resistance settings<br/>Added damping: Earth 0.2;<br/>Mars 0.00327 Nm s/rad.<br/>Approximation, not air drag.<br/>Scale 0 restores original gains."]
-    dust["6. READY: Footstep dust<br/>Moving, loaded feet kick up sand.<br/>No global haze or dust storms.<br/>Mars density sets particle drag.<br/>Bounded pool; clears on reset."]
-    test["7. TEST: Contact, then policy<br/>Press and slide a foot first.<br/>Then run H1 from a fixed start.<br/>Check slip, falls and sensing.<br/>Stop on failure."]
-    compare["8. EXPORT: Side-by-side video<br/>Match duration, command and view.<br/>Show Earth and Mars together.<br/>Label and synchronize playback.<br/>Export a Mac-ready MP4."]
+    earth["1. VERIFIED: Earth baseline<br/>Rough-H1 walking on rigid trail.<br/>Same checkpoint; no retraining.<br/>Earlier six-second run: zero resets."]
+    capture["2. VERIFIED: Scene and capture<br/>Local rigid collision meshes.<br/>Smooth orbit; Mac-ready MP4.<br/>Video does not validate soil."]
+    solver["3. EXPERIMENTAL: Soil solver<br/>Headless two-way MPM benchmark.<br/>Weight support verified.<br/>Grid and timestep checks fail."]
+    calibration["4. PENDING: Dry loose sand<br/>Check grid and timestep convergence.<br/>Calibrate sinkage, shear and repose.<br/>No validated Mars soil preset yet."]
+    air["5. PENDING: Atmosphere<br/>Keep motor gains unchanged.<br/>Model forces from relative airflow.<br/>Joint damping is not air drag."]
+    grains["6. PENDING: Ejected material<br/>Use mass and momentum exchange.<br/>Resolve launch from foot contact.<br/>Fine airborne dust is not modeled."]
+    test["7. PENDING: H1 on verified soil<br/>Connect forces and terrain sensing.<br/>Check Earth on the same solver.<br/>Then test Mars slip and falls."]
+    compare["8. PENDING: Comparison<br/>Same policy, route and command.<br/>Compare measured trajectories.<br/>Record after physics checks pass."]
+    retired["RETIRED from playback<br/>Prescribed footprint columns.<br/>Cosmetic dust emission.<br/>Default added joint damping."]
 
-    earth --> capture --> mars --> soil --> damping --> dust --> test --> compare
+    earth --> capture --> solver --> calibration --> air --> grains --> test --> compare
+    retired -.-> solver
 
-    classDef core fill:#dbeafe,stroke:#2563eb,color:#172554;
-    classDef support fill:#f3f4f6,stroke:#9ca3af,color:#111827;
-    class mars,soil,damping,dust,test,compare core;
-    class earth,capture support;
+    classDef verified fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef experimental fill:#fef3c7,stroke:#d97706,color:#78350f;
+    classDef pending fill:#dbeafe,stroke:#2563eb,color:#172554;
+    classDef retired fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
+    class earth,capture verified;
+    class solver experimental;
+    class calibration,air,grains,test,compare pending;
+    class retired retired;
 ```
+
+**Current Mars playback is a rigid-ground gravity test. The new soil benchmark is separate; neither is validated Martian loose-sand inference.**
 
 ## Cleanup performed
 
@@ -152,7 +162,7 @@ flowchart TD
 
 ## Remaining implementation order
 
-Follow the Current state flowchart: local Mars terrain → displaced regolith → resistance settings → footstep dust → validation → side-by-side videos.
+Follow the Current state flowchart: solver verification → material calibration → physical atmosphere and ejected material → H1 integration → measured comparison.
 
 ## Run the existing preview
 
@@ -182,7 +192,9 @@ tests pass. Rendered appearance, ground contact and walking stability still requ
 ## Project structure
 
 ```text
-scripts/view_scene.py             Single CLI entry point
+scripts/view_scene.py             Scene CLI entry point
+scripts/benchmark_mpm_soil.py     Headless coupled soil/foot experiment
+scripts/verify_mpm_soil.py        Numerical controls and refinement checks
 src/mars_project/
   scene_runner.py                CLI, simulator lifecycle, checkpoint inference and stepping
   tasks/h1.py                    H1 environment/PPO configuration and Gym registration
@@ -190,6 +202,7 @@ src/mars_project/
   scenes/earth.py                Earth geometry, lighting and rendering settings
   scenes/canyon.py               Canyon geometry, collision and lighting
   scenes/cameras.py              One fixed camera
+  environment/                   Retired deformation/dust; opt-in damping heuristic
   assets/scene_paths.py          Runtime paths and USD dependency validation
   assets/data/                  Packaged runtime assets and provenance
 tests/                          Registration and asset-validation checks
@@ -445,39 +458,69 @@ A fresh simulator check without a checkpoint verified loading, a fixed start and
 rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
 
 
-Mars step 4 uses a fine-textured sand surface over a local 5 × 2.1 m contact grid.
-Sub-millimetre texture replaces the visible 6 cm balls. Foot pressure lowers 5 cm
-contact cells by up to 12 mm and redistributes that volume into surrounding ridges.
-Kinematic collision columns and height sensing share elevations. A continuous visual
-sheet interpolates between their centers, smoothing the 5 cm collision discretization;
-reset restores the bed. This is an empirical soil approximation, not calibrated
-regolith mechanics or individually simulated sand grains.
-Rebuild with `.venv/bin/python scripts/build_mars_regolith.py`.
-Use `/home/eddie/env_isaaclab/bin/python scripts/check_regolith.py --kit_args=--no-window`
-for the loaded-foot, collision-height, volume and reset check (logs in `outputs/log/`).
-The loaded-foot check measured 3.1 mm descent, matched visible/live collision heights,
-and verified volume conservation and reset. CPU scene queries retain stale GPU-body
-poses in this runtime; policy sensing uses live physics tensors instead.
-Fine-sand playback: six recorded seconds, zero resets, valid terrain sensing;
-maximum indentation 6.9 mm and ridge height 3.5 mm. Nineteen tests pass.
+### Soil physics verification
 
+`scripts/benchmark_mpm_soil.py` runs Newton implicit MPM coupled to a dynamic
+15 kg test foot in MuJoCo. A force fixture holds it while a 107.52 kg bed settles;
+after release, only gravity, solved contacts and an optional horizontal test load
+act on it. Disabling soil force feedback is the negative control. No rendering,
+policy, prescribed footsteps, surface-height edits or particle emission is involved.
 
-Step 5 selects added joint resistance from `--gravity`, independently of scenery.
-`--joint-resistance-scale 1` (default) adds 0.2 N m s/rad on Earth and approximately
-0.003265 on Mars; `--joint-resistance-scale 0` retains the original checkpoint motor
-gains. Stiffness and effort limits are unchanged. The increment uses a heuristic
-Mars/Earth density ratio (0.020/1.225 kg/m³), not a physical joint aerodynamic model.
-`RESISTANCE_CONFIG` logs the profile, original gains and increment. Separate fresh
-Earth and Mars runs verified the applied actuator damping; sixteen tests passed.
+MPM points represent volumes of bulk material, not individual sand grains. Their
+mass and volume are checked independently; the internal solver uses cubic point
+volumes. This continuum model does not resolve sub-millimetre dust. The provisional
+bulk density is 1400 kg/m³, with zero cohesive/tensile strength as the chosen dry-sand
+end-member. Internal friction 0.68, stiffness 10 MPa and interface friction 0.6 are
+**uncalibrated benchmark inputs**, not measured Martian parameters. The density is
+within the Pathfinder soil-like engineering estimates summarized in the
+[NASA geotechnical review](https://ntrs.nasa.gov/citations/20200003046); that review
+also documents soil variability. It does not validate this benchmark.
 
+The implementation follows Newton's
+[two-way coupling example](https://github.com/newton-physics/newton/blob/main/newton/examples/multiphysics/example_mujoco_mpm_coupled_solver.py)
+and [implicit MPM solver](https://newton-physics.github.io/newton/latest/api/_generated/newton.solvers.SolverImplicitMPM.html).
+Solver `air_drag` is **numerical background regularization**, not a physical
+atmosphere model. Zero caused nonfinite values at empty grid nodes in the first
+trial; that failed output is preserved. Earlier reports lacking
+`represented_density_kg_m3` used the wrong point-volume convention and must not
+be used for material interpretation. The original fine-grid fixed-domain run
+also failed. The current benchmark uses a sparse grid.
 
-Step 6 adds contact-driven visual dust: only moving, loaded H1 feet or new foot contacts
-emit 0.15–0.35 mm grains. A fixed 2,048-particle pool caps emissions at 600/s, removes settled
-or out-of-bounds particles, and clears on episode reset. Particle gravity follows
-the simulation; quadratic drag uses the same environment profile's air density,
-with separate particle size/density coefficients. It is a visual approximation,
-not resolved aerosols or extra load-bearing soil. Unit checks cover contact gating,
-lifetime, bounds and lower Mars drag; a no-policy runtime emitted dust successfully.
+```bash
+mkdir -p outputs/log
+/home/eddie/env_isaaclab/bin/python scripts/verify_mpm_soil.py > "outputs/log/mpm-verification-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+```
+
+The suite checks weight support, free-fall acceleration, feedback-off behavior,
+small/large shear loads, grid refinement, timestep refinement and numerical
+regularization sensitivity. Its provisional 2 mm and 5% checks are numerical
+acceptance gates, not experimental Mars tolerances. JSON reports in
+`outputs/physics/` include parameters, software versions, benchmark source hash,
+force samples and failed checks; `.log` files go in `outputs/log/`. A nonzero exit
+means at least one numerical check failed. Even exit zero does **not** establish
+Mars validity: material calibration, independent validation, bed-boundary studies,
+three-level convergence and H1 integration remain necessary.
+
+The November 13 checks measured 55.652 N support against 55.650 N expected weight.
+Switching off feedback let the foot fall through to the rigid base. However,
+halving the timestep changed the lowest foot height by 4.52 mm; halving the grid
+spacing changed it by 4.41 mm. Both exceed the provisional 2 mm gate. **Numerical
+verification is incomplete; H1 loose-sand integration remains pending.** These
+heights include settling and contact discretization, not calibrated Mars sinkage.
+The same suite resisted a 5 N horizontal load with about 5 N of soil reaction;
+40 N produced 0.191 m more displacement than the unloaded control. All seven
+runs stayed finite. The full local report is
+[`mpm-verification-20261113-202431-915542.json`](outputs/physics/mpm-verification-20261113-202431-915542.json).
+
+The old pressure-driven kinematic columns and cosmetic dust modules are retained
+only for provenance and old artifact checks; playback no longer activates them.
+Their previous tests verified implementation behavior, not soil constitutive laws.
+Existing Mars recordings do not establish realistic sinkage, traction or dust behavior.
+`--joint-resistance-scale` now defaults to **0**, preserving the original motor
+gains on both planets. Nonzero values explicitly opt into the old damping heuristic;
+they are not aerodynamic forces. The existing Mars launcher logs its rigid-ground
+scope and cannot be used to infer loose-sand sinkage or traction. The retired
+`check_regolith.py` now requires `--legacy-heuristic` to reproduce its old checks.
 
 Requested named experiments now go to `outputs/recordings/MM-DD-YYYY/earth/earth-*`
 or `outputs/recordings/MM-DD-YYYY/mars/mars-*`. Unsolicited diagnostics stay in that

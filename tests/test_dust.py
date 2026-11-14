@@ -1,4 +1,4 @@
-"""Fine particles emit only during loaded foot motion or touchdown."""
+"""Legacy visual-emitter checks; these do not validate physical dust ejection."""
 
 import numpy as np
 

@@ -1,6 +1,6 @@
-"""Bounded visual dust emitted only by loaded feet disturbing nearby grains.
+"""Legacy visual emitter, disconnected from playback; NOT a soil simulation.
 
-Dust is a visual, one-way approximation. A pressure-driven sand surface provides actual contact.
+Retained for provenance only. Particles do not exchange momentum with the robot.
 """
 
 import numpy as np

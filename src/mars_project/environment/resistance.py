@@ -1,4 +1,4 @@
-"""Explicit resistance profiles: a motor-damping approximation, not aerodynamics."""
+"""Legacy motor-damping heuristic, disabled by default; not aerodynamics."""
 
 import json
 import math
@@ -22,7 +22,7 @@ def environment_profile(name):
     return EARTH if name == "earth" else MARS
 
 
-def apply_joint_resistance(cfg, profile, scale=1.0):
+def apply_joint_resistance(cfg, profile, scale=0.0):
     """Add a small damping increment without replacing tuned baseline gains.
 
     The density ratio is a heuristic, not a joint-level aerodynamic derivation.
