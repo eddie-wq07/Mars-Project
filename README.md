@@ -15,7 +15,7 @@ Run one pretrained H1 walking policy on Earth and Mars, then compare outcomes.
 
 **This is a workflow map, not a checklist of training we have completed.** We reuse a pretrained
 rough-H1 policy; this project has not run PPO training. Gray nodes describe functionality supplied by
-Isaac Lab/RSL-RL. Green nodes are project integration verified by a smoke test. Amber means testing is still needed.
+Isaac Lab/RSL-RL. Green nodes are project integration verified by the stated smoke test or measured evaluation.
 
 ```mermaid
 flowchart TD
@@ -34,7 +34,7 @@ flowchart TD
     end
     checkpoint["EXISTING PRETRAINED CHECKPOINT<br/>Local cache: .pretrained_checkpoints/h1_rough.pt"]
     playback["9. PROJECT — IMPLEMENTED + SMOKE-TESTED<br/>Migrate config for installed RSL-RL; load rough-H1 checkpoint<br/>Run fixed-weight policy inference in our scene"]
-    verify["10. PROJECT — TESTING STILL NEEDED<br/>Forward walking, stability and Earth/Mars comparison"]
+    verify["10. PROJECT — MEASURED<br/>100 paired trials per environment<br/>Earth: 89 arrivals; Mars: 73 arrivals<br/>No falls or timeouts under the stated criteria"]
     config -.->|Configuration if training were requested| observe
     save -.->|Training would produce this artifact| checkpoint
     config --> playback
@@ -42,10 +42,8 @@ flowchart TD
 
     classDef implemented fill:#dcfce7,stroke:#16a34a,color:#14532d;
     classDef upstream fill:#f3f4f6,stroke:#9ca3af,color:#111827;
-    classDef verify fill:#fef3c7,stroke:#d97706,color:#78350f;
-    class config,playback implemented;
+    class config,playback,verify implemented;
     class observe,actor,simulate,collect,critic,update,save,checkpoint upstream;
-    class verify verify;
 ```
 
 **“Matching task” means `Isaac-Velocity-Rough-H1`**, the upstream Isaac Lab velocity-tracking task
@@ -66,7 +64,8 @@ batches, update weights or save training checkpoints. It applies Isaac Lab's ver
 migration before creating the runner. Fixed USD scenes retain height sensing and disable generated-terrain
 curriculum. Earth/Mars gravity and appearance are scene overrides, not separate policy tasks.
 
-Step 9 verification covers loading and a short simulation run, **not stable walking**. The current command
+Step 9 verification covers loading and a short simulation run. Step 10 now measures walking over
+100 seeded starts per environment; see the results and limits below. The preview command
 defaults to zero velocity; `--forward-velocity` commands walking. Without `--checkpoint`,
 the launcher sends zero actions instead of using a policy.
 
@@ -125,14 +124,14 @@ Green = verified scope. Amber = experimental. Blue = pending. Red = retired.
 
 ```mermaid
 flowchart TD
-    earth["1. VERIFIED: Earth baseline<br/>Rough-H1 walking on rigid trail.<br/>Same checkpoint; no retraining.<br/>Earlier six-second run: zero resets."]
+    earth["1. MEASURED: Earth baseline<br/>Rough-H1 walking on rigid trail.<br/>Same checkpoint; no retraining.<br/>100 trials: 89 arrivals, 11 boundary exits."]
     capture["2. VERIFIED: Scene and capture<br/>Local rigid collision meshes.<br/>Smooth orbit; Mac-ready MP4.<br/>Video does not validate soil."]
     solver["3. EXPERIMENTAL: Soil solver<br/>Newton MPM now loads in canyon playback.<br/>Two-way H1 coupling and live heights.<br/>Grid and timestep checks still fail."]
     calibration["4. PENDING: Dry loose sand<br/>Check grid and timestep convergence.<br/>Calibrate sinkage, shear and repose.<br/>No validated Mars soil preset yet."]
     air["5. IMPLEMENTED: Atmosphere<br/>Per-link quadratic drag; assumed Cd = 1.<br/>Earth/Mars ideal-gas reference densities.<br/>Force integration verified; motor gains preserved."]
     grains["6. EXPERIMENTAL: Airborne fines<br/>Mass transfers from detached soil.<br/>Micron parcels, gravity and gas drag.<br/>Release rate still needs calibration."]
-    test["7. EXPERIMENTAL: H1 on MPM<br/>Forces, terrain sensing and reset connected.<br/>Validate Earth on the same solver.<br/>Then measure Mars slip and falls."]
-    compare["8. PENDING: Comparison<br/>Same policy, route and command.<br/>Compare measured trajectories.<br/>Record after physics checks pass."]
+    test["7. EXPERIMENTAL: H1 on MPM<br/>100 Mars trials: 73 arrivals, 27 boundary exits.<br/>Reset and mass checks passed.<br/>Material calibration remains unresolved."]
+    compare["8. MEASURED: Comparison<br/>Same policy, rigid solver, target and command.<br/>All 200 trajectories audited.<br/>Combined environments; gravity is not isolated."]
     retired["RETIRED from playback<br/>Prescribed footprint columns.<br/>Cosmetic dust emission.<br/>Default added joint damping."]
 
     earth --> capture --> solver --> calibration --> air --> grains --> test --> compare
@@ -142,9 +141,9 @@ flowchart TD
     classDef experimental fill:#fef3c7,stroke:#d97706,color:#78350f;
     classDef pending fill:#dbeafe,stroke:#2563eb,color:#172554;
     classDef retired fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
-    class earth,capture verified;
+    class earth,capture,compare verified;
     class solver,air,grains,test experimental;
-    class calibration,compare pending;
+    class calibration pending;
     class retired retired;
 ```
 
@@ -160,12 +159,90 @@ flowchart TD
 - Kept every texture referenced by the active USD scenes. Asset validation now checks referenced dependencies for missing files and LFS pointers before simulation startup.
 - Kept the pretrained checkpoint cache locally and added it to `.gitignore`.
 
-## Remaining implementation order
+## Measured trajectory evaluation
 
-Next is the agreed **100 trials per condition**, with a **5 m goal**, **0.5 m tolerance**
-and **30 s timeout**, using the same rigid-body backend for comparison. Keep the accepted
-shallow regolith and explicit assumptions in [sources.md](sources.md); further material
-calibration remains a fidelity limitation, not a requirement to add a more complex solver.
+`scripts/evaluate_trajectories.py` runs **100 trials per condition**, using the same cached
+rough-H1 weights and Newton/MuJoCo Warp rigid-body solver. Earth uses its rigid trail;
+Mars uses the accepted shallow MPM sand in the canyon. Both use 5 ms physics ticks,
+two rigid substeps, 20 ms control steps, and a constant **0.5 m/s body-forward command**.
+No training, heading feedback, motor-gain changes or rendering occurs in this evaluator.
+
+**Completed 14 November 2026: 100 Earth + 100 Mars trials, seeds 42–141.**
+
+| Metric | Earth, rigid trail | Mars, shallow MPM |
+| --- | ---: | ---: |
+| Arrivals | 89/100 | 73/100 |
+| Boundary exits | 11 | 27 |
+| Falls / timeouts / invalid states | 0 / 0 / 0 | 0 / 0 / 0 |
+| Successful arrival mean ± sample SD | 10.084 ± 0.246 s | 12.440 ± 0.273 s |
+| Successful arrival median | 10.06 s | 12.38 s |
+| Mean per-trial maximum absolute lateral drift, all trials | 0.320 m | 0.434 m |
+| Arrival-rate Wilson 95% interval | 81.4–93.7% | 63.6–80.7% |
+
+Both conditions arrived for **70 paired seeds**; Mars took **2.421 s longer on average**
+within those pairs. Nineteen seeds arrived only on Earth, three only on Mars, and eight
+exited the boundary in both. All 100 Mars trials showed soil deformation, passed reset
+checks, and had zero recorded mass-ledger error.
+
+Results are in [the completed evaluation](outputs/evaluations/paired-100-20261114-1048/):
+[comparison JSON](outputs/evaluations/paired-100-20261114-1048/comparison.json),
+[trajectory plot](outputs/evaluations/paired-100-20261114-1048/trajectories.png), and
+[metric distributions](outputs/evaluations/paired-100-20261114-1048/metrics.png).
+Each condition contains 100 result JSONs and 100 trajectory NPZs. The directory also
+preserves software versions and a hashed input snapshot, including the uncommitted source
+and checkpoint. The three original Mars worker batches remain alongside it.
+
+All 200 traces passed the full sample-by-sample audit; **42 unit tests** and Ruff passed.
+See [the audit log](outputs/log/evaluation-final-audit-20261114-1334.log).
+The final Mars worker returned exit code 143 after writing all 33 assigned trials and
+`EVALUATION_COMPLETE`; its saved traces and summary passed the same full audit.
+This exit status is preserved in the evaluation's `execution-status.json`.
+A repeated seed reached the goal at 12.18 s and 12.14 s: initial states are seeded,
+but GPU MPM trajectories are not promised bitwise deterministic.
+
+- Paired seeds **42–141** select independent uniform offsets in route coordinates:
+  forward/lateral position **±5 cm**, heading **±3°**, forward/lateral velocity **±0.05 m/s**,
+  and yaw rate **±0.02 rad/s**. Joint starts are fixed; other randomization and observation noise are disabled.
+- Each target is **5 m along the nominal route from that trial's actual starting position**.
+  Success is first entry into the **0.5 m horizontal radius**, while upright, by **30 s**.
+  Timing includes initial landing; it is sampled at 50 Hz, with no separate settling phase.
+- Falls mean base height below **0.55 m above local terrain**, or tilt exceeding **60°**.
+  A fall takes precedence over arrival. This is a kinematic criterion, not torso-contact detection.
+- Both collision corridors extend to **7 m** along travel, retaining their source surface.
+  A **1 m boundary guard** keeps feet and the rotated height scanner inside the mesh.
+  Crossing it is reported separately as `out_of_bounds`, never as a fall or successful arrival.
+- Every Mars trial restores particle positions/velocities, surface displacement, mass and dust;
+  reset assertions run before motion and mass conservation is checked every control step.
+- Autoreset is disabled so terminal state cannot be replaced by the next spawn.
+  Each trial saves a result JSON and compressed NPZ containing every 50 Hz base pose/velocity,
+  joint position, action, foot position, route position, drag force and soil-surface extrema.
+  Manifests record checkpoint/source/terrain hashes, seeds, joint ordering and assumptions.
+
+Reproduce in a fresh output directory (both conditions must use the same code and assets):
+
+```bash
+mkdir -p outputs/log
+run_id="$(date +%Y%m%d-%H%M%S-%N)"
+for condition in earth mars; do
+  /home/eddie/env_isaaclab/bin/python -u scripts/evaluate_trajectories.py \
+    --condition "$condition" --trials 100 --seed 42 \
+    --output-dir "outputs/evaluations/paired-100-$run_id" \
+    > "outputs/log/evaluation-$condition-$run_id.log" 2>&1 || break
+done
+/home/eddie/env_isaaclab/bin/python scripts/summarize_evaluation.py \
+  "outputs/evaluations/paired-100-$run_id" \
+  > "outputs/log/evaluation-audit-$run_id.log" 2>&1
+```
+
+The audit re-scores **every saved sample**, checks paired initial states and matching hashes,
+and refuses incomplete batches. It writes `comparison.json`, `trajectories.png` and `metrics.png`.
+It reports arrivals, falls, timeouts, boundary exits, arrival time among successes, lateral drift,
+and paired arrival differences only where both trials succeeded. Saved foot motion is not labelled
+as contact-based slip: the MPM coupling does not expose that measurement.
+
+This is a comparison of **combined environments with different source terrains**, not an isolated
+gravity experiment. The assumed sand parameters and unresolved numerical convergence limit physical
+claims; see [sources.md](sources.md). Small start variations do not establish general walking reliability.
 
 ## Run the existing preview
 
@@ -196,6 +273,8 @@ tests pass. Rendered appearance, ground contact and walking stability still requ
 
 ```text
 scripts/view_scene.py             Scene CLI entry point
+scripts/evaluate_trajectories.py  Paired Earth/Mars trials with per-step traces
+scripts/summarize_evaluation.py   Independent full-trace audit and comparison plots
 scripts/benchmark_mpm_soil.py     Headless coupled soil/foot experiment
 scripts/verify_mpm_soil.py        Numerical controls and refinement checks
 scripts/check_mpm_playback.py     Loaded H1/soil interaction, sensing and reset check
@@ -341,6 +420,7 @@ for screenshots.
 ## Output organization
 
 - `outputs/log/`: all `.log` files from runs, smoke checks and diagnostics.
+- `outputs/evaluations/`: trajectory data, input snapshots, manifests, audit results and scientific analysis plots.
 - `outputs/lighting/`: standalone lighting comparisons, sky images and render PNG assets.
 - `outputs/recordings/MM-DD-YYYY/`: explicitly requested captures, retaining their requested grouping.
 - `outputs/recordings/misc/MM-DD-YYYY/`: diagnostic screenshots and videos, grouped by day.
@@ -478,7 +558,7 @@ rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
 ### MPM soil in canyon playback
 
 `--appearance grand-canyon` replaces the local terrain with a buried, 4 cm deep
-MPM soil domain (6.5 × 4 m). Its 130,000 material samples represent 1,456 kg at the
+MPM soil domain (8.5 × 4 m). Its 170,000 material samples represent 1,904 kg at the
 provisional 1,400 kg/m³ bulk density. The 4 cm computational voxels and 2 cm sample
 spacing are bulk discretization, **not grain dimensions**, and are never rendered.
 

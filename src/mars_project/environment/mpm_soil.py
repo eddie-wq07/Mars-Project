@@ -12,7 +12,7 @@ import numpy as np
 from mars_project.environment.regolith import terrain_height
 from mars_project.scenes.canyon import OPTIMIZED_DIR
 
-X_MIN, X_MAX = -1.5, 5.0
+X_MIN, X_MAX = -1.5, 7.0
 Y_MIN, Y_MAX = -2.0, 2.0
 THICKNESS = 0.04
 VOXEL_SIZE = 0.04
@@ -248,7 +248,7 @@ def particle_surface_heights(points, query_xy, fallback, radius, cell=VOXEL_SIZE
     import torch
 
     # The ray-scanned corridor bounds enclose the soil and its free edges.
-    xmin, ymin, xmax, ymax = -1.5, -2.0, 5.0, 2.0
+    xmin, ymin, xmax, ymax = X_MIN, Y_MIN, X_MAX, Y_MAX
     nx, ny = math.ceil((xmax - xmin) / cell), math.ceil((ymax - ymin) / cell)
     ix = torch.floor((points[:, 0] - xmin) / cell).long()
     iy = torch.floor((points[:, 1] - ymin) / cell).long()

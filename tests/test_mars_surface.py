@@ -13,17 +13,17 @@ def test_local_corridor_matches_source_and_covers_scanner():
     points = np.asarray(mesh.GetPointsAttr().Get())
     assert np.isfinite(points).all()
     assert np.allclose(points.min(0)[:2], [-1.5, -2])
-    assert np.allclose(points.max(0)[:2], [5, 2])
+    assert np.allclose(points.max(0)[:2], [7, 2])
     assert set(mesh.GetFaceVertexCountsAttr().Get()) == {3}
     faces = np.asarray(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)
     t = points[faces]
     signed_area = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])[:, 2] / 2
     assert (signed_area > 0).all()
-    assert signed_area.sum() == pytest.approx(26)
+    assert signed_area.sum() == pytest.approx(34)
     source = Usd.Stage.Open(str(OPTIMIZED_DIR / "scenery.usdc"))
     m = UsdGeom.Mesh(source.GetPrimAtPath("/Canyon/Terrain"))
     tri = np.asarray(m.GetPointsAttr().Get())[np.asarray(m.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)]
-    tri = tri[(tri.max(1)[:, 0] >= -1.5) & (tri.min(1)[:, 0] <= 5) & (tri.max(1)[:, 1] >= -2) & (tri.min(1)[:, 1] <= 2)]
+    tri = tri[(tri.max(1)[:, 0] >= -1.5) & (tri.min(1)[:, 0] <= 7) & (tri.max(1)[:, 1] >= -2) & (tri.min(1)[:, 1] <= 2)]
     for p in points[::101]:
         heights = []
         for a, b, c in tri:

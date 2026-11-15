@@ -6,14 +6,14 @@
       -2
     ],
     [
-      5,
+      7,
       2
     ]
   ],
   "spacing_m": 0.05,
-  "vertices": 10611,
-  "triangles": 20800,
-  "source_triangles": 8,
+  "vertices": 13851,
+  "triangles": 27200,
+  "source_triangles": 12,
   "route_direction": "+X",
   "spawn_ground_z": 0.0,
   "limitation": "Resampled source triangles; no added microterrain"

@@ -20,11 +20,11 @@ def build():
     transform = np.asarray(UsdGeom.XformCache().GetLocalToWorldTransform(mesh.GetPrim()))
     points = points @ transform[:3, :3] + transform[3, :3]
     triangles = points[np.asarray(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)]
-    xs, ys = np.linspace(-1.5, 5, 131), np.linspace(-2, 2, 81)
+    xs, ys = np.linspace(-1.5, 7, 171), np.linspace(-2, 2, 81)
     xx, yy = np.meshgrid(xs, ys)
     heights = np.full(xx.shape, -np.inf)
     selected = triangles[
-        np.all(triangles.max(1)[:, :2] >= [-1.5, -2], 1) & np.all(triangles.min(1)[:, :2] <= [5, 2], 1)
+        np.all(triangles.max(1)[:, :2] >= [-1.5, -2], 1) & np.all(triangles.min(1)[:, :2] <= [7, 2], 1)
     ]
     for a, b, c in selected:
         u, v = b - a, c - a
@@ -65,7 +65,7 @@ def build():
     np.savez_compressed(OPTIMIZED_DIR / "local_ground.npz", x=xs, y=ys, heights=heights)
     metadata = dict(
         source="scenery.usdc:/Canyon/Terrain",
-        bounds_xy=[[-1.5, -2], [5, 2]],
+        bounds_xy=[[-1.5, -2], [7, 2]],
         spacing_m=0.05,
         vertices=len(vertices),
         triangles=len(faces),

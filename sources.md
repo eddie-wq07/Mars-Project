@@ -37,9 +37,10 @@ lists Pathfinder/Sojourner **1290–1520 kg/m³ density, 30–40° friction angl
 - Surface height follows **material volume / column area**, assuming constant bulk density; horizontal redistribution leaves ruts/piles.
 - Vertical jitter cannot raise this surface; bulk volume fades at particle heights **3–7 cm above the prior surface**, without velocity-sign switching.
 - This depth-averaged approximation omits elastic volume changes and overhangs; it does not replace physical MPM contact forces.
-- Domain **6.5 × 4 × 0.04 m**; **4 cm grid**, **2 cm point spacing**, **130,000 samples**, approximately **1456 kg**.
+- Domain **8.5 × 4 × 0.04 m**; **4 cm grid**, **2 cm point spacing**, **170,000 samples**, approximately **1904 kg**.
 - **4 cm loose sand over firm ground** is our shallow-layer assumption, not a NASA measurement or target footprint depth.
 - One solver cell through the layer is a coarse contact approximation, not resolved depth-dependent compaction.
+- Evaluation corridor extension (2026-11-14): +X end moved from 5 m to 7 m for the 5 m goal and scanner margin; material law, layer depth and grid spacing are unchanged.
 - Activity: **0.55 m** around feet plus disturbances; sleep threshold **0.01 m/s for 0.4 s**, **3-cell confining halo**.
 - Solver: **100 iterations**, tolerance **10⁻⁵**, `P0` strain basis; `air_drag = 1` is numerical regularization, not atmospheric drag.
 - Implementation: [soil_columns.py](src/mars_project/environment/soil_columns.py), [soil_runtime.py](src/mars_project/environment/soil_runtime.py), [soil_surface.py](src/mars_project/environment/soil_surface.py).

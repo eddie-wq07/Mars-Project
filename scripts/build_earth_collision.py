@@ -34,14 +34,14 @@ def build():
     transforms = np.array(instancer.ComputeInstanceTransformsAtTime(Usd.TimeCode.Default(), Usd.TimeCode.Default()))
     # Includes foot placement and the policy's 1.6 x 1 m height scanner margin.
     xs = np.linspace(-2, 2, 81)
-    ys = np.linspace(-5, 1.5, 131)
+    ys = np.linspace(-7, 1.5, 171)
     xx, yy = np.meshgrid(xs, ys)
     heights = np.full(xx.shape, -np.inf)
     for instance in np.where(np.array(instancer.GetProtoIndicesAttr().Get()) == prototype)[0]:
         transform = transforms[instance]
         world = points @ transform[:3, :3] + transform[3, :3] - anchor
         triangles = world[faces]
-        triangles = triangles[np.all(triangles.max(1) >= [-2, -5, -1], 1) & np.all(triangles.min(1) <= [2, 1.5, 1], 1)]
+        triangles = triangles[np.all(triangles.max(1) >= [-2, -7, -1], 1) & np.all(triangles.min(1) <= [2, 1.5, 1], 1)]
         for a, b, c in triangles:
             u, v = b - a, c - a
             det = u[0] * v[1] - u[1] * v[0]
@@ -88,7 +88,7 @@ def build():
     output.GetRootLayer().Save()
     metadata = dict(
         source_prototype=str(targets[prototype]),
-        bounds_xy=[[-2, -5], [2, 1.5]],
+        bounds_xy=[[-2, -7], [2, 1.5]],
         spacing_m=0.05,
         vertices=len(vertices),
         triangles=len(faces),
