@@ -1,783 +1,255 @@
-# Vision for Project: Mars-Project
+# Mars-Project
 
-Run one pretrained H1 walking policy on Earth and Mars, then compare outcomes.
+Run the same pretrained Unitree H1 walking policy in Earth and Mars simulation environments, record its motion, and compare measured outcomes.
 
-## End goal
+The project combines Isaac Lab, Newton/MuJoCo Warp, deformable soil, atmospheric forces, and a repeatable evaluation pipeline. The **100-trial evaluation for each environment is complete**. The simulation uses fixed policy weights; no policy training was performed in this project. Its soil and dust models remain experimental.
 
-1. **Earth:** Walk straight for roughly 5–10 footsteps in the Poly Haven scene.
-2. **Mars:** Run the same checkpoint on calibrated dry, loose sand under Mars gravity;
-   model atmosphere and ejected material physically.
-3. **Findings:** Compare success over 100 trajectories per environment using the same target distance.
-4. **Recording:** Save short videos for visual iteration, then produce final comparison footage.
+- **[Findings report](report.md):** experiment setup, results, interpretation, and validation.
+- **[Physics sources and assumptions](sources.md):** material parameters, atmosphere, approximations, and references.
+- **[Recorded results](outputs/evaluations/paired-100-20261114-1048/):** trajectories, metrics, plots, and input snapshots from 14 November 2026.
 
+Jump to [repo layout](#repository-organization), [setup](#setup), [previews and recording](#run-a-preview), [evaluation](#reproduce-the-trajectory-evaluation), [outputs](#outputs-and-reports), or [lighting troubleshooting](#camera-and-lighting-troubleshooting).
 
-## Training Pipeline
+## Results
 
-**This is a workflow map, not a checklist of training we have completed.** We reuse a pretrained
-rough-H1 policy; this project has not run PPO training. Gray nodes describe functionality supplied by
-Isaac Lab/RSL-RL. Green nodes are project integration verified by the stated smoke test or measured evaluation.
-
-```mermaid
-flowchart TD
-    config["1. PROJECT — IMPLEMENTED<br/>Mars-Project-H1 uses rough-H1 environment + PPO configs"]
-    subgraph upstream["UPSTREAM TRAINING — supplied by Isaac Lab / RSL-RL; not run by our launcher"]
-        observe["2. OBSERVE — Isaac Lab<br/>256 values: robot state, velocity command, terrain heights"]
-        actor["3. ACTOR — RSL-RL<br/>Choose 19 joint-position actions"]
-        simulate["4. SIMULATE — Isaac Lab<br/>Advance physics; return observations, rewards and done flags"]
-        collect["5. COLLECT — RSL-RL<br/>24 steps per environment"]
-        critic["6. CRITIC — RSL-RL<br/>Estimate future reward"]
-        update["7. PPO UPDATE — RSL-RL<br/>5 learning epochs per batch"]
-        save["8. SAVE — RSL-RL<br/>Checkpoint: learned weights + training state"]
-        observe --> actor --> simulate --> collect --> critic --> update --> save
-        collect -->|More experience| observe
-        update -->|Next batch| observe
-    end
-    checkpoint["EXISTING PRETRAINED CHECKPOINT<br/>Local cache: .pretrained_checkpoints/h1_rough.pt"]
-    playback["9. PROJECT — IMPLEMENTED + SMOKE-TESTED<br/>Migrate config for installed RSL-RL; load rough-H1 checkpoint<br/>Run fixed-weight policy inference in our scene"]
-    verify["10. PROJECT — MEASURED<br/>100 paired trials per environment<br/>Earth: 89 arrivals; Mars: 73 arrivals<br/>No falls or timeouts under the stated criteria"]
-    config -.->|Configuration if training were requested| observe
-    save -.->|Training would produce this artifact| checkpoint
-    config --> playback
-    checkpoint --> playback --> verify
-
-    classDef implemented fill:#dcfce7,stroke:#16a34a,color:#14532d;
-    classDef upstream fill:#f3f4f6,stroke:#9ca3af,color:#111827;
-    class config,playback,verify implemented;
-    class observe,actor,simulate,collect,critic,update,save,checkpoint upstream;
-```
-
-**“Matching task” means `Isaac-Velocity-Rough-H1`**, the upstream Isaac Lab velocity-tracking task
-for Unitree H1 on rough terrain. Our registered task remains `Mars-Project-H1`: `MarsH1EnvCfg` inherits
-`H1RoughEnvCfg`, and `MarsH1PPORunnerCfg` inherits `H1RoughPPORunnerCfg`. The actor takes 256 observations
-(69 robot/command values plus 187 terrain heights) and outputs 19 joint actions; actor and critic use
-`[512, 256, 128]` hidden layers. PPO inherits 24 steps per environment, 5 learning epochs, 4 minibatches
-and a 0.001 learning rate. The experiment name remains `mars_h1`.
-
-A **checkpoint** is a saved training snapshot containing learned neural-network weights and training state
-(such as optimizer state and iteration). Loading its weights supplies the learned policy for playback.
-Use a rough-H1 checkpoint matching this observation/action layout and network architecture; the cached
-flat-H1 checkpoint is incompatible. The rough checkpoint from the earlier temporary smoke test is now cached
-at `.pretrained_checkpoints/h1_rough.pt` (local, ignored by Git).
-
-**Playback reuses the operations in steps 2–4 with fixed weights.** Our launcher does not collect training
-batches, update weights or save training checkpoints. It applies Isaac Lab's version-aware RSL-RL config
-migration before creating the runner. Fixed USD scenes retain height sensing and disable generated-terrain
-curriculum. Earth/Mars gravity and appearance are scene overrides, not separate policy tasks.
-
-Step 9 verification covers loading and a short simulation run. Step 10 now measures walking over
-100 seeded starts per environment; see the results and limits below. The preview command
-defaults to zero velocity; `--forward-velocity` commands walking. Without `--checkpoint`,
-the launcher sends zero actions instead of using a policy.
-
-
-## Flowchart
-
-`src/` holds the importable `mars_project` package. **`tasks/` defines the robot's learning/control environment**
-(observations, actions, rewards and resets, mostly inherited from Isaac Lab). **`scenes/` configures its surroundings
-and camera** and applies rendering settings. **`scene_runner.py` coordinates both and owns the simulation loop.**
-
-Read downward in execution order. Blue boxes carry the main project logic; gray boxes are supporting steps.
-Paths below are relative to `src/mars_project/`, except the launcher in `scripts/`.
-
-```mermaid
-flowchart TD
-    entry["scripts/view_scene.py<br/>Run the command"]
-    path["sys.path.insert(0, .../src)<br/>Tell Python to search src first for imports"]
-    main["scene_runner.py → main()<br/>Read CLI options with parse_args()"]
-    assets["assets/scene_paths.py → validate_assets()<br/>Check the selected scene's files"]
-    task["tasks/__init__.py imports tasks/h1.py<br/>Register Mars-Project-H1 and its H1/PPO configs"]
-    config["scene_runner.py → parse_env_cfg()<br/>Load the registered config; select gravity"]
-    setup["scenes/setup.py → configure_preview()<br/>Zero velocity commands; disable pushes and observation noise"]
-    scene["scenes/earth.py OR scenes/canyon.py<br/>configure_earth_scene() / configure_canyon_scene()<br/>Configure scenery, collision ground, lighting and view"]
-    launch["scene_runner.py<br/>launch_simulation() starts the simulator<br/>gym.make() builds the configured environment"]
-    finish["scenes/earth.py OR scenes/canyon.py<br/>Apply render settings and verify scene setup"]
-    camera["scene_runner.py → env.reset()<br/>scenes/cameras.py → create_camera()<br/>Select the fixed viewport camera"]
-    policy["scene_runner.py<br/>If --checkpoint: load RSL-RL inference policy<br/>Otherwise: use zero actions"]
-    loop{"scene_runner.py<br/>Simulator running and below --steps limit?"}
-    step["scene_runner.py → action_step()<br/>Policy turns observations into actions, or use zeros<br/>env.step(actions) advances the environment<br/>Keep new observations; reset policy state for ended episodes"]
-    close["scene_runner.py → env.close()<br/>Exit simulator context"]
-
-    entry --> path --> main --> assets --> task --> config --> setup --> scene
-    scene --> launch --> finish --> camera --> policy --> loop
-    loop -->|Yes| step
-    step -->|Increment step counter| loop
-    loop -->|No| close
-
-    classDef core fill:#dbeafe,stroke:#2563eb,color:#172554;
-    classDef support fill:#f3f4f6,stroke:#9ca3af,color:#111827;
-    class main,task,config,setup,scene,launch,finish,policy,loop,step core;
-    class entry,path,assets,camera,close support;
-```
-
-`sys.path.insert` does not start the simulator or copy files: it makes `src/mars_project` discoverable by Python.
-`from mars_project.scene_runner import main` loads that module and makes its `main` function available;
-the launcher's `main()` call then starts the sequence above. Importing `tasks` also registers the task name with Gym.
-
-The arrows show execution order, not that each file calls the next directly: **`main()` calls the helpers and resumes
-when each returns**. `configure_preview()` itself calls the selected scene's configuration function. The nested
-`action_step()` function runs only when the loop calls it; Isaac Lab's `env.step()` handles the underlying physics,
-observations, rewards and episode resets. The project runner does not implement those mechanics itself.
-
-## Current state
-
-Green = verified scope. Amber = experimental. Blue = pending.
-
-```mermaid
-flowchart TD
-    earth["1. MEASURED: Earth baseline<br/>Rough-H1 walking on rigid trail.<br/>Same checkpoint; no retraining.<br/>100 trials: 89 arrivals, 11 boundary exits."]
-    capture["2. VERIFIED: Scene and capture<br/>Local rigid collision meshes.<br/>Smooth orbit; Mac-ready MP4.<br/>Video does not validate soil."]
-    solver["3. EXPERIMENTAL: Soil solver<br/>Newton MPM now loads in canyon playback.<br/>Two-way H1 coupling and live heights.<br/>Grid and timestep checks still fail."]
-    calibration["4. PENDING: Dry loose sand<br/>Check grid and timestep convergence.<br/>Calibrate sinkage, shear and repose.<br/>No validated Mars soil preset yet."]
-    air["5. IMPLEMENTED: Atmosphere<br/>Per-link quadratic drag; assumed Cd = 1.<br/>Earth/Mars ideal-gas reference densities.<br/>Force integration verified; motor gains preserved."]
-    grains["6. EXPERIMENTAL: Airborne fines<br/>Mass transfers from detached soil.<br/>Micron parcels, gravity and gas drag.<br/>Release rate still needs calibration."]
-    test["7. EXPERIMENTAL: H1 on MPM<br/>100 Mars trials: 73 arrivals, 27 boundary exits.<br/>Reset and mass checks passed.<br/>Material calibration remains unresolved."]
-    compare["8. MEASURED: Comparison<br/>Same policy, rigid solver, target and command.<br/>All 200 trajectories audited.<br/>Combined environments; gravity is not isolated."]
-
-    earth --> capture --> solver --> calibration --> air --> grains --> test --> compare
-
-    classDef verified fill:#dcfce7,stroke:#16a34a,color:#14532d;
-    classDef experimental fill:#fef3c7,stroke:#d97706,color:#78350f;
-    classDef pending fill:#dbeafe,stroke:#2563eb,color:#172554;
-    class earth,capture,compare verified;
-    class solver,air,grains,test experimental;
-    class calibration pending;
-```
-
-**Canyon playback defaults to experimental two-way MPM soil. `--soil rigid` selects the rigid-ground PhysX baseline. Neither mode is validated Martian loose-sand inference.**
-
-## Cleanup performed
-
-- Removed disconnected WASD controls and the separate stand-up training task.
-- Removed the broken `play_mars.py` shortcut and redundant environment-listing wrapper; `scripts/view_scene.py` is the sole launcher.
-- Removed robot POV, orbit controls and the unused Earth dome-orientation helper; retained active sky, exposure and lighting logic.
-- Removed the offline canyon builder, original USDZ, intermediate preview mesh and anchor; kept optimized runtime assets and source/build metadata. Rebuilding from raw sources now requires restoring the builder and inputs from version history/source provenance.
-- Removed outdated planning/architecture documents; this README describes the current structure and next work.
-- Kept every texture referenced by the active USD scenes. Asset validation now checks referenced dependencies for missing files and LFS pointers before simulation startup.
-- Kept the pretrained checkpoint cache locally and added it to `.gitignore`.
-- Removed prescribed-deformation soil, cosmetic footstep dust, and joint-damping heuristics, together with their obsolete commands, tests, assets, and outdated architecture diagrams. Historical outputs remain intact; the current architecture is documented here.
-
-## Measured trajectory evaluation
-
-`scripts/evaluate_trajectories.py` runs **100 trials per condition**, using the same cached
-rough-H1 weights and Newton/MuJoCo Warp rigid-body solver. Earth uses its rigid trail;
-Mars uses the accepted shallow MPM sand in the canyon. Both use 5 ms physics ticks,
-two rigid substeps, 20 ms control steps, and a constant **0.5 m/s body-forward command**.
-No training, heading feedback, motor-gain changes or rendering occurs in this evaluator.
-
-**Completed 14 November 2026: 100 Earth + 100 Mars trials, seeds 42–141.**
-
-| Metric | Earth, rigid trail | Mars, shallow MPM |
+| Metric | Earth | Mars |
 | --- | ---: | ---: |
-| Arrivals | 89/100 | 73/100 |
+| Successful arrivals | **89/100** | **73/100** |
 | Boundary exits | 11 | 27 |
 | Falls / timeouts / invalid states | 0 / 0 / 0 | 0 / 0 / 0 |
-| Successful arrival mean ± sample SD | 10.084 ± 0.246 s | 12.440 ± 0.273 s |
-| Successful arrival median | 10.06 s | 12.38 s |
-| Mean per-trial maximum absolute lateral drift, all trials | 0.320 m | 0.434 m |
-| Arrival-rate Wilson 95% interval | 81.4–93.7% | 63.6–80.7% |
+| Mean arrival time among successful trials | 10.08 s | 12.44 s |
+| Mean per-trial peak absolute lateral drift, all trials | 0.320 m | 0.434 m |
 
-Both conditions arrived for **70 paired seeds**; Mars took **2.421 s longer on average**
-within those pairs. Nineteen seeds arrived only on Earth, three only on Mars, and eight
-exited the boundary in both. All 100 Mars trials showed soil deformation, passed reset
-checks, and had zero recorded mass-ledger error.
+Both conditions succeeded for 70 paired seeds; Mars took **2.42 s longer on average within those pairs**. All 200 trajectories, containing 119,327 saved samples, passed the full audit. Every Mars trial showed soil deformation and passed reset and mass-conservation checks.
 
-Results are in [the completed evaluation](outputs/evaluations/paired-100-20261114-1048/):
-[comparison JSON](outputs/evaluations/paired-100-20261114-1048/comparison.json),
-[trajectory plot](outputs/evaluations/paired-100-20261114-1048/trajectories.png), and
-[metric distributions](outputs/evaluations/paired-100-20261114-1048/metrics.png).
-Each condition contains 100 result JSONs and 100 trajectory NPZs. The directory also
-preserves software versions and a hashed input snapshot, including the uncommitted source
-and checkpoint. The three original Mars worker batches remain alongside it.
+See the [machine-readable comparison](outputs/evaluations/paired-100-20261114-1048/comparison.json), [trajectory plot](outputs/evaluations/paired-100-20261114-1048/trajectories.png), and [metric distributions](outputs/evaluations/paired-100-20261114-1048/metrics.png). The [findings report](report.md) includes uncertainty intervals and the execution-status caveat: the final worker returned exit code 143 after saving its complete batch; every saved trial passed audit.
 
-All 200 traces passed the full sample-by-sample audit; **42 unit tests** and Ruff passed.
-See [the audit log](outputs/log/evaluation-final-audit-20261114-1334.log).
-The final Mars worker returned exit code 143 after writing all 33 assigned trials and
-`EVALUATION_COMPLETE`; its saved traces and summary passed the same full audit.
-This exit status is preserved in the evaluation's `execution-status.json`.
-A repeated seed reached the goal at 12.18 s and 12.14 s: initial states are seeded,
-but GPU MPM trajectories are not promised bitwise deterministic.
+These results compare **combined environments** with different source terrains, gravity, soil, and atmosphere. They do not isolate the effect of gravity or establish real-world Mars walking reliability.
 
-- Paired seeds **42–141** select independent uniform offsets in route coordinates:
-  forward/lateral position **±5 cm**, heading **±3°**, forward/lateral velocity **±0.05 m/s**,
-  and yaw rate **±0.02 rad/s**. Joint starts are fixed; other randomization and observation noise are disabled.
-- Each target is **5 m along the nominal route from that trial's actual starting position**.
-  Success is first entry into the **0.5 m horizontal radius**, while upright, by **30 s**.
-  Timing includes initial landing; it is sampled at 50 Hz, with no separate settling phase.
-- Falls mean base height below **0.55 m above local terrain**, or tilt exceeding **60°**.
-  A fall takes precedence over arrival. This is a kinematic criterion, not torso-contact detection.
-- Both collision corridors extend to **7 m** along travel, retaining their source surface.
-  A **1 m boundary guard** keeps feet and the rotated height scanner inside the mesh.
-  Crossing it is reported separately as `out_of_bounds`, never as a fall or successful arrival.
-- Every Mars trial restores particle positions/velocities, surface displacement, mass and dust;
-  reset assertions run before motion and mass conservation is checked every control step.
-- Autoreset is disabled so terminal state cannot be replaced by the next spawn.
-  Each trial saves a result JSON and compressed NPZ containing every 50 Hz base pose/velocity,
-  joint position, action, foot position, route position, drag force and soil-surface extrema.
-  Manifests record checkpoint/source/terrain hashes, seeds, joint ordering and assumptions.
+## What is simulated
 
-Reproduce in a fresh output directory (both conditions must use the same code and assets):
+| Component | Earth | Mars |
+| --- | --- | --- |
+| Scenery | Poly Haven Verdant Trail | Packaged Grand Canyon terrain |
+| Gravity | 9.81 m/s² downward | 3.71 m/s² downward |
+| Walking surface | Rigid, uneven local collision mesh | 4 cm of deformable sand over a rigid substrate |
+| Robot air drag | Earth reference atmosphere | Mars reference atmosphere |
+| Default visual-preview backend | PhysX | Newton/MuJoCo Warp coupled to implicit MPM |
+| Measured evaluation backend | Newton/MuJoCo Warp | Newton/MuJoCo Warp coupled to implicit MPM |
 
-```bash
-mkdir -p outputs/log
-run_id="$(date +%Y%m%d-%H%M%S-%N)"
-for condition in earth mars; do
-  /home/eddie/env_isaaclab/bin/python -u scripts/evaluate_trajectories.py \
-    --condition "$condition" --trials 100 --seed 42 \
-    --output-dir "outputs/evaluations/paired-100-$run_id" \
-    > "outputs/log/evaluation-$condition-$run_id.log" 2>&1 || break
-done
-/home/eddie/env_isaaclab/bin/python scripts/summarize_evaluation.py \
-  "outputs/evaluations/paired-100-$run_id" \
-  > "outputs/log/evaluation-audit-$run_id.log" 2>&1
-```
+The robot uses a cached **rough-terrain H1 checkpoint** with 256 observations and 19 joint-position actions. Joint ordering and actuator gains are preserved when switching environments. The registered task is `Mars-Project-H1`, built on Isaac Lab's rough-H1 task configuration.
 
-The audit re-scores **every saved sample**, checks paired initial states and matching hashes,
-and refuses incomplete batches. It writes `comparison.json`, `trajectories.png` and `metrics.png`.
-It reports arrivals, falls, timeouts, boundary exits, arrival time among successes, lateral drift,
-and paired arrival differences only where both trials succeeded. Saved foot motion is not labelled
-as contact-based slip: the MPM coupling does not expose that measurement.
+The main environment features are:
 
-This is a comparison of **combined environments with different source terrains**, not an isolated
-gravity experiment. The assumed sand parameters and unresolved numerical convergence limit physical
-claims; see [sources.md](sources.md). Small start variations do not establish general walking reliability.
+- **Deformable soil:** Newton's material point method (MPM) exchanges forces with the robot. The local 8.5 × 4 m soil domain contains 170,000 material samples. Nearby and disturbed soil is simulated actively; settled deformation persists.
+- **Shared terrain representation:** the visible soil surface and policy height observations use the same volume-based reconstruction. Detailed scenery is separate from the bounded collision corridor used for walking.
+- **Airborne dust:** a small fraction of detached material becomes mass-carrying parcels subject to gravity and gas drag, then deposits back onto the surface. Kit renders the suspended material as a volume.
+- **Robot air resistance:** quadratic drag acts on individual links using their velocity and projected area. Atmospheric forces are separate from the robot's motor gains.
 
-## Run the existing preview
+Parameter values and model limits are documented in [sources.md](sources.md).
 
-Use the existing Isaac Sim environment from the project root:
-
-```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --gravity mars --steps 300
-```
-
-These are stationary previews unless `--checkpoint /absolute/path/to/checkpoint.pt` is supplied;
-even with a checkpoint the current velocity command is zero. They use a Kit viewport. Add `--record LABEL --kit_args=--no-window` for offscreen recording over SSH. `--steps 300` means 300 control steps, not 300 footsteps or a guaranteed video duration.
-
-Run the cached rough-H1 policy (zero commanded velocity, five control steps):
-
-```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 5 --checkpoint .pretrained_checkpoints/h1_rough.pt --kit_args=--no-window
-```
-
-Restore missing LFS content from a configured remote with `git lfs pull`, or use `git lfs checkout` when the objects
-are already cached. Validation reports missing/unhydrated assets before launching the simulator.
-
-On 2026-11-12, restored all 128 Earth texture placeholders from the local LFS cache. All 136 tracked LFS
-assets match their recorded sizes and SHA-256 hashes; Earth and canyon dependency validation and all three
-tests pass. Rendered appearance, ground contact and walking stability still require a simulator smoke run.
-
-## Project structure
+## Repository organization
 
 ```text
-scripts/view_scene.py             Scene CLI entry point
-scripts/evaluate_trajectories.py  Paired Earth/Mars trials with per-step traces
-scripts/summarize_evaluation.py   Independent full-trace audit and comparison plots
-scripts/benchmark_mpm_soil.py     Headless coupled soil/foot experiment
-scripts/verify_mpm_soil.py        Numerical controls and refinement checks
-scripts/check_mpm_playback.py     Loaded H1/soil interaction, sensing and reset check
-scripts/check_soil_walk.py        Seven-second policy, local soil and dust conservation check
-scripts/check_air_drag.py         Robot momentum, additive force and reset checks on both backends
-scripts/build_sand_normal.py      Rebuild the normal texture used by the active MPM terrain
-src/mars_project/
-  scene_runner.py                CLI, simulator lifecycle, checkpoint inference and stepping
-  tasks/h1.py                    H1 environment/PPO configuration and Gym registration
-  scenes/setup.py                Stationary preview configuration and scene selection
-  scenes/earth.py                Earth geometry, lighting and rendering settings
-  scenes/canyon.py               Canyon geometry, collision and lighting
-  scenes/cameras.py              One fixed camera
-  environment/mpm_soil.py        Coupled MPM soil, live height observations and runtime checks
-  environment/soil_runtime.py    Contact-local activation, persistent terrain state and dust transfer
-  environment/soil_surface.py    Continuous terrain mesh and fine sand material
-  environment/airborne_dust.py   Mass-carrying aerosol parcels with gravity and gas drag
-  environment/aerodynamics.py   Link geometry areas, atmosphere density and quadratic drag
-  environment/air_drag.py       Robot external-force integration; zero extra policy inputs
-  environment/dust_volume.py     Conservative extinction grid and native Kit volume rendering
-  environment/soil_columns.py    Conservative volume-to-height reconstruction for MPM
-  assets/scene_paths.py          Runtime paths and USD dependency validation
-  assets/terrain.py              Shared canyon collision-height sampler
-  assets/data/                  Packaged runtime assets and provenance
-tests/                          Physics, control configuration, assets, captures and evaluation checks
+src/mars_project/           Reusable simulation code
+  tasks/                   H1 control configuration and task registration
+  scenes/                  World assembly, scenery, cameras, and lighting
+  environment/             Active soil, dust, and aerodynamic models
+  assets/                  Packaged geometry/textures, validation, and terrain sampling
+  scene_runner.py          Preview lifecycle and checkpoint playback
+  evaluation.py            Trial protocol, paired starts, and outcome scoring
+  screenshots.py           Screenshot capture and output routing
+  recordings.py            MP4 encoding and smooth orbit tracking
+scripts/                   Launchers, experiments, audits, and asset builders
+tests/                     Automated checks for the active implementation
+outputs/                   Generated evidence, ignored by Git
+report.md                  Completed evaluation findings
+sources.md                 Physics assumptions and supporting references
+AGENTS.md                  Repository editing and output conventions
+pyproject.toml / uv.lock    Dependencies and local Isaac Lab integration
 ```
 
-`h1.py` defines **what environment the policy controls**. `scene_runner.py` defines **how to launch and step it**.
-Both are needed; there is no second stand-up task or keyboard-control module.
+The separation keeps **robot control**, **world physics**, and **experiment orchestration** independently understandable. Both preview and evaluation reuse the simulation code. Evaluation runs without rendering and saves raw trajectories; a separate audit reads those artifacts to produce the comparison. Videos provide visual evidence, while the evaluation pipeline supplies measured outcomes.
 
-## Environment and checks
+## Setup
 
-`pyproject.toml` and `uv.lock` describe the environment and editable Isaac Lab dependencies under
-`/home/eddie/IsaacLab`. Update `[tool.uv.sources]` if that checkout moves. `uv sync` defaults to Newton;
-this project's scene runner uses PhysX for rigid previews and coupled Newton/MuJoCo/MPM for canyon soil,
-with Kit rendering in both modes, available in the existing interpreter above.
-The optional dependency extras remain available for Isaac Lab compatibility.
+The existing workstation uses Linux, Python 3.12, an NVIDIA GPU, and a local Isaac Lab checkout at `/home/eddie/IsaacLab`. The completed evaluation used an RTX 5080, PyTorch 2.11 with CUDA 13, and Newton 1.6.1; the complete [software snapshot](outputs/evaluations/paired-100-20261114-1048/software.json) is saved with the results.
+
+Two Python environments serve different purposes:
+
+| Environment | Use |
+| --- | --- |
+| `/home/eddie/env_isaaclab/bin/python` | Existing simulator runtime, rendered previews, and GPU experiments |
+| `.venv/bin/python` | Repository development and unit tests |
+
+For a new checkout, install the matching Isaac Lab/Isaac Sim runtime and adjust the editable dependency paths in `pyproject.toml` if the Isaac Lab checkout moves. `uv sync --group dev` prepares the development environment from the checked-in configuration; it does not replace simulator installation.
+
+From the project root, prepare the shell used by the commands below:
+
+```bash
+git lfs pull
+mars_python=/home/eddie/env_isaaclab/bin/python
+mkdir -p outputs/log
+```
+
+Supply the matching rough-H1 checkpoint at `.pretrained_checkpoints/h1_rough.pt`. The checkpoint, Python environments, and generated outputs are ignored by Git. A fresh clone therefore does not contain the saved runs or checkpoint. The flat-H1 checkpoint has an incompatible observation layout.
+
+Asset validation rejects missing files, unresolved USD references, and unhydrated Git LFS pointers before preview startup. MP4 encoding also requires `imageio-ffmpeg` in the simulator interpreter; if missing, install it with `uv pip install --python "$mars_python" imageio-ffmpeg`.
+
+## Run a preview
+
+These commands open a Kit viewport and run six simulated seconds of forward walking. Run them in a desktop session with a display:
+
+```bash
+"$mars_python" scripts/view_scene.py \
+  --appearance earth --steps 300 \
+  --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 \
+  > "outputs/log/earth-preview-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+
+"$mars_python" scripts/view_scene.py \
+  --appearance grand-canyon --steps 300 \
+  --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 \
+  > "outputs/log/mars-preview-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+```
+
+| Option | Behavior |
+| --- | --- |
+| `--appearance earth` / `grand-canyon` | Selects the world; default gravity follows the selected appearance. |
+| `--gravity earth` / `mars` | Overrides gravity independently of scenery. |
+| `--soil rigid` | Selects the rigid-ground PhysX baseline for canyon previews. |
+| `--air-drag auto` / `earth` / `mars` / `off` | Selects robot air drag. `auto` follows gravity; dust atmosphere continues to follow gravity. |
+| `--forward-velocity 0.5` | Commands body-forward motion in m/s; requires a checkpoint. Default is zero. |
+| `--steps N` | Limits control steps; at the current 20 ms control interval, 300 steps is six simulated seconds. Zero runs until the window closes. |
+
+Without a checkpoint, the launcher sends zero actions. A loaded checkpoint with zero velocity command is a stationary policy preview. Preview autoresets remain enabled and are logged; a completed video is not itself a scored successful trajectory.
+
+### Record videos and screenshots over SSH
+
+For an explicitly requested six-second orbit recording:
+
+```bash
+"$mars_python" scripts/view_scene.py \
+  --appearance earth --steps 300 \
+  --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 \
+  --record earth-demo --camera-motion orbit --capture-requested \
+  --kit_args=--no-window \
+  > "outputs/log/earth-video-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
+```
+
+Use `--appearance grand-canyon --record mars-demo` for Mars. Videos are 1080p, 25-fps H.264 MP4s with QuickTime-compatible encoding. Orbit mode adds one unrecorded simulation second for settling; render warmup does not advance physics. `--kit_args=--no-window` still uses the GPU and Kit renderer; SSH does not stream the viewport.
+
+For stills, use `--screenshot LABEL` with a positive step limit. `--screenshot-pair LABEL` captures two frames one simulation second apart; `--screenshot-series LABEL --screenshot-count 5` captures a series. Capture modes are mutually exclusive. `--screenshot-requested` and `--capture-requested` are aliases.
+
+Only mark captures as requested when the user explicitly asked for them. Otherwise omit that flag so diagnostics use `recordings/misc/`. Requested labels such as `earth-demo` and `mars-demo` receive their own environment-grouped folders. Captures use Vancouver dates and avoid overwriting existing files.
+
+Example visual previews: [Earth orbit](outputs/recordings/11-14-2026/earth/earth-air-resistance/10:07am_earth-air-resistance-orbit.mp4) and [Mars orbit](outputs/recordings/11-14-2026/mars/mars-air-resistance/10:09am_mars-air-resistance-orbit.mp4). These recordings are separate from the headless evaluation batch.
+
+## Reproduce the trajectory evaluation
+
+The evaluator uses the same checkpoint and rigid-body solver for both conditions. Each trial starts from a reset state, records every control step, and stops on its first terminal outcome. Autoreset is disabled so it cannot replace the terminal state.
+
+| Protocol | Setting |
+| --- | --- |
+| Trials | 100 per condition, paired seeds 42–141 |
+| Target | 5 m along the nominal route from the actual starting position |
+| Arrival | Within 0.5 m horizontally while upright, by 30 s |
+| Start variations | Position ±5 cm, heading ±3°, horizontal velocity ±0.05 m/s, yaw rate ±0.02 rad/s |
+| Control | Constant 0.5 m/s body-forward command; no heading feedback or observation noise |
+| Timing | 5 ms physics ticks, two rigid substeps, 20 ms control steps; timing includes landing |
+| Fall | Base below 0.55 m above local terrain or tilt exceeding 60° |
+| Boundary | Leaving the guarded collision corridor is a separate failure |
+
+Run both conditions sequentially in a **new output directory**. The subshell stops on a failed command:
+
+```bash
+(
+  set -e
+  run_id="$(date +%Y%m%d-%H%M%S-%N)"
+  result_dir="outputs/evaluations/paired-100-$run_id"
+  for condition in earth mars; do
+    "$mars_python" -u scripts/evaluate_trajectories.py \
+      --condition "$condition" --trials 100 --seed 42 \
+      --output-dir "$result_dir" \
+      > "outputs/log/evaluation-$condition-$run_id.log" 2>&1
+  done
+  "$mars_python" scripts/summarize_evaluation.py "$result_dir" \
+    > "outputs/log/evaluation-audit-$run_id.log" 2>&1
+)
+```
+
+For a small smoke evaluation, use `--trials 2` for both conditions. The full audit checks all saved samples, terminal outcomes, paired starts, seeds, and matching input hashes. It rejects incomplete batches and writes `comparison.json`, `trajectories.png`, and `metrics.png`. Existing reports are preserved; use fresh directories for new runs.
+
+The original completed batch remains in `outputs/evaluations/paired-100-20261114-1048/`. Its manifests and input snapshots preserve the exact evaluation-time sources and checkpoint. Later source cleanup does not rewrite that evidence. GPU MPM motion is not guaranteed bitwise deterministic even with identical seeded starts.
+
+## Outputs and reports
+
+| Location | Contents |
+| --- | --- |
+| `outputs/evaluations/<run>/` | Per-condition trial JSONs and NPZ trajectories, manifests, comparison metrics, and scientific plots |
+| `outputs/physics/` | Isolated solver benchmarks and numerical verification reports |
+| `outputs/log/` | All run, test, simulator, and diagnostic `.log` files |
+| `outputs/recordings/MM-DD-YYYY/` | Explicitly requested captures; named Earth/Mars experiments are grouped under `earth/` or `mars/` |
+| `outputs/recordings/misc/MM-DD-YYYY/` | All unrequested diagnostic screenshots and videos |
+| `outputs/lighting/` | Standalone lighting comparisons, sky images, and render-reference PNG assets |
+
+Each evaluation trial has a JSON outcome record and a compressed NPZ with base pose/velocity, joint positions, actions, foot positions, route coordinates, drag force, and soil-surface extrema. The completed dataset also includes software versions, source/checkpoint hashes, input snapshots, and execution status. Preliminary checks and original worker batches are preserved separately.
+
+Use the capture pipeline for simulation images and videos. Its recording paths take precedence over `outputs/lighting/`. Keep loose logs and PNGs out of the `outputs/` root, preserve requested folder names, and use unique names for new artifacts. See [AGENTS.md](AGENTS.md) for the exact conventions. Artifact links in this README require the local outputs, which are not distributed through Git.
+
+## Tests and verification tools
+
+Run the fast checks from the project root:
 
 ```bash
 .venv/bin/python -m pytest -q
+.venv/bin/ruff check src scripts tests
 ```
 
-The tests check registration and asset validation; they do not establish walking stability or rendering correctness.
+After removal of the retired implementations, **33 tests and Ruff passed**. A [fresh paired smoke evaluation](outputs/evaluations/cleanup-smoke-20261114-174943-120051636/comparison.json) also passed audit for two Earth and two Mars trials. The original full evaluation had 42 passing tests before the obsolete tests were removed; that historical count remains in its report.
 
-## Render screenshots
+| Script | Purpose |
+| --- | --- |
+| `check_mpm_playback.py` | Loaded soil/robot interaction, live height sensing, and reset; optionally checks rendered surface updates |
+| `check_soil_walk.py` | Seven-second policy run with finite-state, reset, and soil/dust mass checks |
+| `check_air_drag.py` | Applied force versus measured momentum, force composition, and reset on Newton or PhysX |
+| `benchmark_mpm_soil.py` | Isolated loaded-foot experiment, independent of the walking policy |
+| `verify_mpm_soil.py` | Support, shear, coupling, timestep, and grid-refinement comparisons |
+| `build_earth_collision.py`, `build_mars_collision.py` | Rebuild local collision surfaces from packaged scene geometry |
+| `build_sand_normal.py` | Rebuild the normal texture used by the active soil surface |
 
-Save a PNG at the viewport render resolution (opens in macOS Preview), grouped into Vancouver-date folders with 12-hour time and a descriptive label in its filename:
+These scripts live under `scripts/`. Use the simulator interpreter for GPU checks and redirect console logs to unique files in `outputs/log/`. For example:
 
 ```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --steps 1 --screenshot --screenshot-requested --kit_args=--no-window
+"$mars_python" scripts/check_soil_walk.py --visualizer none \
+  > "outputs/log/soil-walk-check-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
 ```
 
-Screenshots are opt-in: normal runs capture nothing. The command above runs one control step, followed by
-60 render-only warmup frames and capture. `--screenshot` requires a positive `--steps` limit.
-Use `--screenshot earth-restored` to choose a label; the default label is the scene appearance.
-For explicitly requested captures, add `--screenshot-requested`. Files go to `outputs/recordings/MM-DD-YYYY/h:mmam_label.png` using an underscore before the label,
-for example `11-12-2026/8:21pm_earth-restored.png`. Repeated labels within the same minute receive `-2`, `-3`, etc.
-Use `--appearance earth`, `--steps N`, or `--checkpoint /path/to/policy.pt` to override preview settings.
-The no-window option still requires an NVIDIA GPU and the Kit renderer; it captures the rendered viewport, not the desktop UI.
-The canyon uses our generated orange sky/sun texture; the separate directional light supplies shadows.
+The independent MPM verification suite still has unresolved numerical convergence checks. A failed convergence gate is recorded evidence, not a failed trajectory audit; even a passing numerical suite would not establish experimentally calibrated Mars soil.
 
-Capture two policy-playback frames one simulation second apart (same camera framing):
+## Camera and lighting troubleshooting
 
-```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 50 --checkpoint .pretrained_checkpoints/h1_rough.pt --screenshot-pair earth-test --screenshot-requested --kit_args=--no-window
-```
+**Earth illumination can fail intermittently at startup**, producing a near-black robot or ground despite unchanged assets and settings. Successful retries support a timing-related explanation, but the precise RTX mechanism remains unconfirmed. The issue is not considered permanently fixed.
 
-A is captured after 50 control steps (1 simulation second), B after another 50 steps.
-Render warmup does not advance physics. Files are saved under `outputs/recordings/MM-DD-YYYY/earth-test/`
-as `h:mmam_earth-test-A.png` and `h:mmam_earth-test-B.png` (using the actual capture time).
-The policy still receives a zero velocity command.
+The runner follows this startup sequence; preserve it when changing cameras, exposure, lighting, or renderer initialization:
 
-### Camera and lighting troubleshooting
+1. Configure synchronous USD/material loading and Earth renderer settings **before `gym.make()`**. For MPM playback, select the soil renderer before scene creation.
+2. After Earth environment creation, apply the initial view settings and render three updates **before reset or camera switching**. Retain the initial view setup as well as final-camera setup.
+3. Finish scene setup and reset the environment, then select the final renderer and create the final camera. Author its exposure and render-product settings **before `set_active_camera()`**. HDR dome sampling must be authored on the render product as `omni:rtx:lights:dome:samplingStrategy = imageBasedLighting`, using `OmniRtxSettingsCommonAdvancedAPI_1`, as well as the global Carb setting.
+4. Activate the camera, render three updates without advancing physics, and log the effective `RENDER_VIEW` state. Captures then receive 60 render-only warmup updates.
 
-**Symptom (2026-11-13):** intermittent near-black robot/ground in Earth recordings,
-including `earth-6`, despite unchanged HDR assets and neutral exposure. Do not accept
-such a recording as merely a dark scene. Inspect a rendered frame before delivering it.
+Preserve source HDR intensity, neutral exposure, both Earth dome assets, and ACES. The configured RTX ISO value of zero bypasses its camera multiplier; it is not a physical camera ISO. Fixed captures and orbits frame the robot at its body midpoint; changing camera height must not change illumination settings.
 
-**Leading suspected cause:** a loading/startup timing error: rendering or camera
-activation may occur before assets and lighting/view settings are fully consumed by
-RTX. Eddie flagged this on 2026-11-13. Treat loading synchronization and initialization
-order as the first investigation path if it recurs; the exact mechanism is unconfirmed.
+Rigid previews use real-time path tracing; MPM previews use path tracing for heterogeneous dust volumes. Keep the Kit `omni.volume` writer matched to its renderer: the previously tested Warp NanoVDB writer produced an incompatible volume version.
 
-**Earlier workaround:** the `cd5998a` refactor removed initial-view settings. Commit
-`b062fba` restored them and inserted three render updates before reset. This produced
-both bright and dark runs and did **not** establish a permanent fix. Identical authored
-settings in bright/dark runs do not prove that RTX has consumed them correctly.
+After a rendering change, inspect robot and ground illumination in **at least two fresh-process captures**, with separate logs. Settings dumps and unit tests cannot prove the image is correct. Preserve failed captures, compare fixed-pose renders, and investigate loading order before changing exposure. Diagnostic captures belong in `outputs/recordings/misc/MM-DD-YYYY/`.
 
-**Startup hardening:** configure synchronous USD/material loading and Earth renderer
-settings before `gym.make()` loads the scene. Configure the initial view as before.
-Author the final camera's exposure and the render product's settings **before** calling
-`set_active_camera()`, then render three updates without advancing physics. Author
-`omni:rtx:lights:dome:samplingStrategy = imageBasedLighting` on the render product,
-using `OmniRtxSettingsCommonAdvancedAPI_1`, as well as the legacy Carb setting.
-Each launch prints a `RENDER_VIEW` JSON snapshot of the selected camera, exposure,
-auto-exposure, renderer, HDR sampling and tonemapper for comparison.
+## Scope and limitations
 
-**Evidence and limits:** controlled captures at one frozen robot pose showed that
-lowering the camera to the body midpoint preserves correct illumination. Reapplying
-settings and hiding/restoring the camera-sky dome did not establish a cure for the
-intermittent fault. The precise internal RTX race is unconfirmed; the changes above
-remove late/default configuration windows rather than compensate with brighter lights.
-Preserve HDR light intensity/exposure, the two dome assets and ACES. Camera-height
-changes alone must not alter any of those values. Fixed captures and orbits use the
-measured body midpoint height; the orbit follows a smoothed body midpoint throughout movement.
+- The completed comparison measures this policy on these two combined environments. Terrain, gravity, soil, and atmosphere vary together.
+- The shallow soil layer, material parameters, local active-region boundaries, and dust release model are assumptions. Material calibration and grid/timestep convergence remain unresolved.
+- Surface reconstruction assumes approximately constant bulk density and does not represent overhangs or full elastic volume changes. MPM still computes three-dimensional contact forces.
+- Robot drag uses projected bounding-box areas, an assumed drag coefficient of one, and prescribed still air. The model does not solve atmospheric flow or wake shielding.
+- Small starting-state variations cover a narrow operating range. Falls use height/tilt thresholds; contact-based slip is not measured.
+- Source scenery extends beyond the physical walking corridor. Keep robot motion and height sensing within the collision domain.
 
-Investigation logs: `outputs/log/lighting-investigation-zaMBMW.log`,
-`outputs/log/lighting-height-investigation-5dh4Gu.log`, and
-`outputs/log/lighting-startup-investigation-TuAHZm.log`. The original failed recording's
-log is `outputs/log/earth-6-level-camera-6ZhE5T.log`; keep it and the original video.
-Diagnostic stills are under `outputs/recordings/misc/11-13-2026/` with `lighting-diag`
-in their names. `tests/test_camera_settings.py` checks stale exposure/sampling overrides
-and lens preservation, but does not replace fresh-process rendered verification.
-
-Verification after hardening: the six-second `earth-6/2:03pm_earth-6-orbit.mp4` and a
-second fresh-process one-second `outputs/recordings/misc/11-13-2026/2:05pm_lighting-startup-repeat-orbit.mp4` both
-rendered with illuminated ground and visible robot surfaces. Inspected frames at 0,
-3 and 5 seconds in the full recording, and 0.5 seconds in the repeat. Logs:
-`outputs/log/earth-6-lighting-startup-fixed-d33Y7U.log` and
-`outputs/log/lighting-startup-repeat-YwwKHi.log`. Four camera/asset regression tests
-and Ruff checks passed. These runs support the mitigation, not proof that every
-possible RTX startup failure is eliminated.
-
-Recurrence: the first fixed-camera `earth-7` forward-walking run on 2026-11-13
-was dark despite the startup hardening (`outputs/log/earth-7-forward-walk-5EWy7v.log`).
-The walking command remained `[0.5, 0, 0]` for six seconds with zero resets.
-Treat the lighting issue as unresolved/intermittent, not permanently fixed; retain
-the failed capture and inspect fresh-run retries before delivery.
-An unchanged fresh-process retry rendered correctly (`earth-7/2:15pm_earth-7.mp4`,
-log `outputs/log/earth-7-forward-walk-retry-9ItJ8q.log`), further supporting a timing-dependent fault.
-
-For future changes, run at least two fresh launches, compare the robot and ground in
-rendered captures, and retain separate logs. If darkness recurs, record the effective
-view state and compare fixed-pose renders before/after a single change; do not declare
-another fixed-frame delay a proven fix or silently raise exposure.
-
-Screenshot organization: captures made for diagnostics or verification without an explicit user request
-must go in `outputs/recordings/misc/MM-DD-YYYY/`. This is the default for both single captures and
-pairs, including Python calls to `capture_screenshot()`. Use `--screenshot-requested` (Python:
-`requested=True`) only when the user explicitly asks for screenshots. Requested pairs use their label
-folder; diagnostic pairs both go in the same daily folder under `misc/`. Date, timestamp, labels and collision avoidance
-work the same in either destination. A request to diagnose or fix something is not itself a request
-for screenshots.
-
-## Output organization
-
-- `outputs/log/`: all `.log` files from runs, smoke checks and diagnostics.
-- `outputs/evaluations/`: trajectory data, input snapshots, manifests, audit results and scientific analysis plots.
-- `outputs/lighting/`: standalone lighting comparisons, sky images and render PNG assets.
-- `outputs/recordings/MM-DD-YYYY/`: explicitly requested captures, retaining their requested grouping.
-- `outputs/recordings/misc/MM-DD-YYYY/`: diagnostic screenshots and videos, grouped by day.
-
-All diagnostic captures use this single `outputs/recordings/misc/` hierarchy; no other `misc` folders or aliases are created.
-
-Keep the `outputs/` root free of loose logs and PNG files. These conventions are also recorded in
-`AGENTS.md` for future work. For example, run a policy smoke check with its log in the correct folder:
-
-```bash
-mkdir -p outputs/log
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 5 --checkpoint .pretrained_checkpoints/h1_rough.pt --kit_args=--no-window > "outputs/log/earth-playback-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
-```
-
-For five requested policy captures at simulation seconds 1–5, labeled A–E, use:
-
-```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 50 --checkpoint .pretrained_checkpoints/h1_rough.pt --screenshot-series earth-test-2 --screenshot-count 5 --screenshot-requested --kit_args=--no-window
-```
-
-The series keeps the first capture's camera framing. Rendering pauses physics between captures;
-the interval is simulation time. The normal environment reset behavior still applies.
-
-## Record an MP4 over SSH
-
-Install the encoder helper in the Isaac Sim interpreter once:
-
-```bash
-uv pip install --python /home/eddie/env_isaaclab/bin/python imageio-ffmpeg
-```
-
-Record five simulation seconds (250 control steps) as a single 1080p, 25-fps H.264 MP4:
-
-```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 250 --checkpoint .pretrained_checkpoints/h1_rough.pt --record earth-test-3 --capture-requested --kit_args=--no-window
-```
-
-`--capture-requested` is an alias for `--screenshot-requested`. Requested videos go in
-`outputs/recordings/MM-DD-YYYY/earth-test-3/`; unrequested videos go in `outputs/recordings/misc/MM-DD-YYYY/`.
-All previous screenshot folders were moved from `outputs/screenshots` to `outputs/recordings`.
-MP4 uses H.264 with `yuv420p` and fast-start metadata for Mac playback. Download the file to the Mac
-(or copy it with `scp` from a Mac terminal) and open it in QuickTime. SSH itself does not stream a GUI.
-Frames use a fixed camera, with physics paused during render/capture work. Temporary PNG frames are
-removed after encoding. The policy receives zero velocity by default; normal automatic episode resets
-remain enabled, so the clip is a preview rather than a continuous successful-walking trial.
-
-For six seconds of forward walking (`0.5 m/s` in the robot's body frame):
-
-```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --record earth-7 --capture-requested --kit_args=--no-window
-```
-
-The same velocity-conditioned checkpoint handles standing and walking. `--forward-velocity`
-sets a constant forward command, disables random standing selection, and keeps lateral/yaw
-commands zero. The fixed-camera run records all 300 control steps without an extra settling
-second. `WALK_PROGRESS` logs the command, position and cumulative resets each simulation second.
-
-## Earth policy instability diagnosis (2026-11-13)
-
-`earth-test-3` was a five-second **zero-command standing preview**, not five footsteps. Five control
-steps in the original loader smoke check meant just 0.1 simulation seconds. That check established
-loading/execution, not policy stability.
-
-The Earth collision floor was authored as one USD quad. PhysX accepted it, but the installed Isaac Lab
-height ray caster passes face indices directly to Warp's triangle mesh without triangulating USD
-polygons. This left incomplete sensor ground coverage; missed heights became clipped -1 observations.
-The rough-H1 policy therefore received false terrain information. The floor now uses two triangles
-with the same vertices and physical footprint. A regression test checks triangular topology and coverage.
-
-A seed-42 comparison using the same checkpoint, zero commands and inherited reset settings produced
-five terminations/automatic respawns in 250 control steps with the quad, versus zero with triangulation.
-The corrected test had 187/187 finite height rays at each sampled check and roughly 0.28 m horizontal
-drift over five seconds. Logs: `outputs/log/policy-standing-baseline.log` and
-`outputs/log/policy-standing-triangulated.log`. This is a short diagnostic result, not validation across
-seeds or walking commands. At the time of that diagnostic, random starting velocities/yaw and mass randomization remained inherited;
-automatic resets can make a failed preview appear to jump back upright. Earth now has a reproducible standing setup; stop-on-fall behavior remains work to do. Existing videos show the pre-fix behavior.
-
-For a cinematic six-second orbit saved alongside an existing test's video:
-
-```bash
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --record earth-test-4 --camera-motion orbit --capture-requested --kit_args=--no-window
-```
-
-Orbit mode lets the policy settle for one unrecorded simulation second, then captures an 80-degree fly-by arc (the trail's rocks and tree obstruct a full revolution)
-with eased camera speed and a level view at the robot's measured midpoint height. The MP4 has an `-orbit` filename
-suffix and stays in the test's folder. Fixed-camera recording remains the default.
-
-Earth outward-facing setup: spawn is fixed at `(0, 0, 1.05)` with zero root/joint velocities,
-fixed default joint positions, seed 42, and no torso-mass randomization. The source scene camera
-is on the outward trail at approximately `(0.0725, -6.6968)` in world XY. Facing from the spawn toward
-that landmark gives yaw `atan2(-6.6968, 0.0725) = -89.38 degrees`, with the cave behind the robot.
-Initial orientation is XYZW identity before the yaw reset; this Isaac Lab build uses XYZW quaternions.
-
-The orbit starts at the robot's measured midpoint after settling, with the source camera
-position establishing its starting azimuth. Each frame filters the body midpoint before translating and aiming the orbit.
-Two cascaded filters use 0.12-second horizontal and 0.4-second vertical time constants
-to suppress footstep bounce. Both camera position and aim use the filtered target;
-the robot can bob naturally within the frame instead of shaking the whole view.
-Robot heading does not rotate the camera arc. The same 80-degree
-arc, radius 2.6 m and 22 mm lens are used every run. Each launch logs the actual initial position,
-quaternion and six velocity components for verification. This establishes a reproducible reference;
-the earlier unseeded videos cannot be reproduced exactly from their MP4s alone.
-
-
-Earth-8 uses a local collision mesh sampled from the visible trail substrate
-(`Mesh_0095`), replacing the former flat floor. The crop is world X [-2, 2] m,
-Y [-5, 1.5] m: the outward walking corridor plus footstep and height-scanner margin.
-The 5 cm grid contains 10,611 vertices and 20,800 triangles. Physics and the rough-H1
-height scanner both use this single invisible mesh. The remaining scenery has no
-collision cost; foliage, separate rocks, and overhangs are excluded. This is a rigid
-terrain approximation, not deformable soil or a calibrated regolith slip model.
-Rebuild with `.venv/bin/python scripts/build_earth_collision.py`; source/crop metadata
-is saved beside `earth_collision_ground.usda`. Forward-walking runs check for missing
-height rays each simulation second and stop if the scanner leaves the patch.
-Longer routes require extending the crop before recording.
-
-```bash
-mkdir -p outputs/log
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance earth --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --record earth-8 --camera-motion orbit --capture-requested --kit_args=--no-window > "outputs/log/earth-8-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
-```
-
-This records six seconds at 25 fps after one second of policy settling, retaining the
-80-degree eased arc, 2.6 m radius and 22 mm lens while following the moving robot.
-
-
-Mars step 3: `scripts/build_mars_collision.py` rebuilds the bounded +X walking
-corridor from `scenery.usdc`. Bounds are X [-1.5, 5], Y [-2, 2] metres;
-20,800 triangles cover the route and scanner margins. The scenery itself is coarse
-(about 5.9 m vertex spacing), so resampling preserves its shape rather than adding
-unmeasured small-scale terrain. Metadata and a height grid accompany the USD.
-A fresh simulator check without a checkpoint verified loading, a fixed start and
-rendered contact; nine tests passed. Diagnostic captures remain in `misc/`.
-
-
-### MPM soil in canyon playback
-
-`--appearance grand-canyon` replaces the local terrain with a buried, 4 cm deep
-MPM soil domain (8.5 × 4 m). Its 170,000 material samples represent 1,904 kg at the
-provisional 1,400 kg/m³ bulk density. The 4 cm computational voxels and 2 cm sample
-spacing are bulk discretization, **not grain dimensions**, and are never rendered.
-
-A continuous mesh replaces the corresponding original canyon triangles. Its boundary
-matches their elevations and photographic UVs, with the same material on the surrounding
-terrain. Sand normals use a 0.256 m texture tile (0.25 mm per texel), with a matte finish.
-The visible surface and policy height observations share a depth-averaged reconstruction:
-quadratic weights project material volume into columns, with height = volume / area.
-This assumes approximately constant bulk density and omits elastic volume changes.
-Horizontal redistribution produces persistent ruts and piles; vertical particle jitter
-does not raise the terrain sheet. Separated bulk material fades geometrically from the
-surface, independently of its vertical velocity sign. MPM still solves 3D contact forces.
-The firm substrate is 4 cm below the original terrain, limiting available loose-sand depth;
-this is an explicit shallow-sand scenario, not a calibrated universal Martian soil.
-The original `mars-4` material and fixed texture coordinates are retained. Parameters and
-sources are in [sources.md](sources.md). No raised slab, exposed side faces, overlapping terrain sheet or
-visible rectangular particle perimeter is authored.
-
-`environment/soil_runtime.py` uses Newton's native active flags: material near the
-feet and still-moving material is dynamic; a three-voxel prescribed-velocity halo
-provides confinement; distant undisturbed material is excluded from grid assembly
-and advection. The entire domain retains storage and a cheap activity scan, so this
-reduces the physical solve, not all memory use. Settled deformation and plastic history
-persist when regions sleep. This finite local domain approximates the rest of the terrain;
-it does not resolve long-range stress waves. Keep the robot within the collision corridor.
-
-`environment/airborne_dust.py` carries a fine fraction from mechanically detached
-material into mass-carrying parcels. Transfer preserves mass and source velocity; it
-does not add random upward kicks. The explicit, uncalibrated default releases 0.0001% of a detached bulk sample,
-in 1/2/5/10 micrometre **radius** bins; this is an emission fraction, not the
-soil’s total fine-grain content. Resolved dust/gas mass loading is checked on every
-control step against a 0.1 limit for the prescribed-gas approximation. Gravity, buoyancy and slip-corrected Stokes
-drag are integrated analytically in a prescribed atmosphere (Mars: 610 Pa, 210 K,
-CO₂; Earth: 101325 Pa, 288.15 K, air). The low-Reynolds-number domain is checked.
-Parcels deposit into a persistent surface mass reservoir instead of expiring on a timer.
-Gas back-reaction, turbulence, grain cohesion/fragmentation and calibrated release rates
-are not resolved. A volumetric extinction field represents suspended grain populations;
-its reconstruction conserves integrated optical area and does not enlarge grain bodies.
-The optical model assumes Q_ext=2 and prescribed scattering color/phase, not spectral Mie scattering.
-
-The dust transport equations have analytic-limit and conservation tests. They do **not**
-make the material or entrainment closure experimentally validated. Relevant primary
-references: [Mars dust release experiments](https://arxiv.org/abs/2208.14761),
-[impact-ejecta settling experiments](https://arxiv.org/abs/2310.09133), and
-[Newton's implicit MPM API](https://newton-physics.github.io/newton/latest/api/_generated/newton.solvers.SolverImplicitMPM.html).
-WorldParticle is not a dependency and has not been installed or substituted for Newton.
-
-Soil playback uses RTX Path Tracing for heterogeneous dust volumes, with 4 samples
-per render update, denoising and up to 128 accumulated samples on a frozen frame.
-The original exposure, sun/sky values and camera activation sequence are preserved.
-The volume writer comes from Kit’s `omni.volume` extension: Warp’s NanoVDB 32.8
-output is incompatible with this renderer’s 32.7 reader. Kit still logs 3D/1D texture
-warnings in this multi-engine setup; a warning alone does not establish whether
-the primary viewport rendered the volume. Inspect the actual captures. Diagnostic
-`9:48pm_soil-dust-native-volume.png` shows a visible cloud, but its deliberately
-superseded 1% release setting was too dense for prescribed-gas transport.
-
-H1 and the kinematic substrate run in Newton's MuJoCo rigid solver; Newton's
-implicit MPM solver owns the soil. A two-way proxy returns soil reaction forces
-to the robot on each 5 ms physics tick, with two rigid substeps. The substrate
-supports the soil layer and remains a collision boundary beneath it. This changes
-the robot physics backend from the previous PhysX preview as well as adding soil;
-Earth/Mars outcome comparisons need a matched backend before scientific interpretation.
-
-Joint position/velocity observations and actions explicitly retain the checkpoint's
-PhysX joint ordering, since Newton imports joints in a different order.
-The policy retains its 187 height observations, now sampled from the live MPM
-terrain surface, including the lower substrate and reconstructed soil thickness. Episode resets restore
-particle positions, velocities and solver state. Coupled Newton does not currently
-support the inherited contact-force sensor, so the two contact-based reward terms
-are disabled and fall detection uses base clearance and tilt. Motor gains are unchanged.
-
-```bash
-mkdir -p outputs/log
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --steps 100 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --kit_args=--no-window > "outputs/log/mpm-h1-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
-/home/eddie/env_isaaclab/bin/python scripts/check_mpm_playback.py > "outputs/log/mpm-playback-check-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
-/home/eddie/env_isaaclab/bin/python scripts/check_soil_walk.py > "outputs/log/soil-walk-check-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
-```
-
-`MPM_LOADED` verifies actual particle count, density and suppression of solver-point rendering.
-`MPM_PROGRESS` reports material motion and the current soil force on H1, and fails
-on nonfinite particle state or exhausted sparse-grid capacity. `LOCAL_SOIL` reports active,
-halo and sleeping counts plus airborne/deposited dust and the total mass ledger. The integration check
-also checks live sensing, interaction and reset; add `--visualizer kit --kit_args=--no-window`
-to check synchronization of the terrain surface vertices. Use `--soil rigid` with the
-scene runner for the old rigid-ground baseline. Earth appearance remains rigid by default.
-
-November 14 shallow-regolith verification: all 33 tests passed, including volume conservation,
-subcell transport, persistent ruts and rejection of vertical-jitter/apex artifacts. A seven-second
-policy run advanced 2.51 m with zero resets and conserved soil/dust mass. The separate Kit check
-verified interaction, unchanged distant particles, live height observations, rendered geometry and reset.
-Evidence: [unit tests](outputs/log/shallow-regolith-tests-20261114-094417-329069906.log),
-[walking check](outputs/log/shallow-regolith-walk-20261114-094425-614441228.log), and
-[rendered reset check](outputs/log/shallow-regolith-reset-20261114-094534-119226499.log).
-The [complete two-second diagnostic clip](outputs/recordings/misc/11-14-2026/9:46am_shallow-regolith-review-orbit.mp4)
-contains 50 decoded frames at 3840 × 2160 / 25 fps. Inspected frames show illuminated terrain and
-subtle residual trails; the recorded three-second simulation (including warmup) had no resets.
-Final reconstructed extrema were -3.30 cm / +1.54 cm; these are local extrema, not average sinkage.
-The [render log](outputs/log/shallow-regolith-video-20261114-094609-456962682.log) records the exact material
-parameters. This verifies the assumed shallow-sand implementation, not experimental calibration.
-
-November 13 verification of the continuous terrain and airborne-fines version: the
-seven-second headless run used the same checkpoint, configuration and 0.5 m/s command
-as recording. H1 advanced 1.85 m in +X with zero resets and finite observations.
-Between 29,171 and 42,724 of the 520,000 samples were dynamic at the one-second
-checkpoints; the remainder were sleeping or in the confining halo. The complete
-soil/airborne/deposited mass ledger stayed within 0.00001 kg of its initial value on
-every control step. Resolved dust/gas mass ratios at the one-second checkpoints
-ranged from 0.0134 to 0.0214, below the prescribed-gas check's 0.1 limit. This is
-an integration check, not an experimental material validation. Evidence:
-[seven-second policy log](outputs/log/soil-walk-validation-20261113-215354-758360882.log).
-All 30 regression tests and Ruff checks passed.
-
-The revised requested `mars-4` is
-[`9:55pm_mars-4-orbit.mp4`](outputs/recordings/11-13-2026/mars/mars-4/9:55pm_mars-4-orbit.mp4):
-six seconds at 25 fps, following a one-second policy warmup. The recorded run kept
-finite soil state and height observations, advanced 1.86 m in +X over the complete
-seven seconds, and had zero resets. Start, middle and end frames show illuminated robot
-surfaces, fine ground detail and no raised rectangular perimeter. Dust is faint at
-the conservative, uncalibrated release rate. The earlier `9:15pm` version is retained.
-Recording evidence: [render log](outputs/log/mars-4-final-20261113-215539-870457840.log).
-Full decoding verified all 150 H.264 frames at 3840 × 2160. A final headless repeat
-with concentration checks on all 350 control steps passed with a peak resolved
-dust/gas mass ratio of 0.030515. The separate reset check verified unchanged distant
-particles, measured soil reaction, live height sensing and a finite step after reset
-with CUDA graphs enabled. All 30 tests and lint passed again. Evidence:
-[walking check](outputs/log/soil-walk-final-20261113-220126-246861.log),
-[reset check](outputs/log/soil-reset-final-20261113-220126-246861.log), and
-[completion record](outputs/log/mars-4-detached-status-20261113-220126-246861.json).
-
-Earlier November 13 verification of the superseded raised point-cloud version: the one-second no-policy check passed material
-motion, H1 reaction forces, live height sensing, particle/solver reset and equality of
-the rendered Fabric points with the solver positions. A separate 100-control-step
-(two-second) run loaded the existing rough-H1 checkpoint at a 0.5 m/s command, advanced
-about 0.30 m in +X with zero resets, and kept all height rays finite. The illuminated
-diagnostic frame shows material displaced by the feet. These are short integration
-checks, not calibrated sinkage or sustained-walking results. All 25 regression tests
-and Ruff checks passed. Evidence:
-[integration log](outputs/log/mpm-playback-check-20261113-210928-633246234.log),
-[policy log](outputs/log/mpm-h1-walk-20261113-211159-194712597.log), and
-[diagnostic frame](outputs/recordings/misc/11-13-2026/9:12pm_mpm-h1-walk.png).
-
-### Soil physics verification
-
-`scripts/benchmark_mpm_soil.py` runs Newton implicit MPM coupled to a dynamic
-15 kg test foot in MuJoCo. A force fixture holds it while a 107.52 kg bed settles;
-after release, only gravity, solved contacts and an optional horizontal test load
-act on it. Disabling soil force feedback is the negative control. No rendering,
-policy, prescribed footsteps, surface-height edits or particle emission is involved.
-
-MPM points represent volumes of bulk material, not individual sand grains. Their
-mass and volume are checked independently; the internal solver uses cubic point
-volumes. This continuum model does not resolve sub-millimetre dust. The provisional
-bulk density is 1400 kg/m³, with zero cohesive/tensile strength as the chosen dry-sand
-end-member. Internal friction 0.68, stiffness 10 MPa and interface friction 0.6 are
-**uncalibrated benchmark inputs**, not measured Martian parameters. The density is
-within the Pathfinder soil-like engineering estimates summarized in the
-[NASA geotechnical review](https://ntrs.nasa.gov/citations/20200003046); that review
-also documents soil variability. It does not validate this benchmark.
-
-The implementation follows Newton's
-[two-way coupling example](https://github.com/newton-physics/newton/blob/main/newton/examples/multiphysics/example_mujoco_mpm_coupled_solver.py)
-and [implicit MPM solver](https://newton-physics.github.io/newton/latest/api/_generated/newton.solvers.SolverImplicitMPM.html).
-Solver `air_drag` is **numerical background regularization**, not a physical
-atmosphere model. Zero caused nonfinite values at empty grid nodes in the first
-trial; that failed output is preserved. Earlier reports lacking
-`represented_density_kg_m3` used the wrong point-volume convention and must not
-be used for material interpretation. The original fine-grid fixed-domain run
-also failed. The current benchmark uses a sparse grid.
-
-```bash
-mkdir -p outputs/log
-/home/eddie/env_isaaclab/bin/python scripts/verify_mpm_soil.py > "outputs/log/mpm-verification-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
-```
-
-The suite checks weight support, free-fall acceleration, feedback-off behavior,
-small/large shear loads, grid refinement, timestep refinement and numerical
-regularization sensitivity. Its provisional 2 mm and 5% checks are numerical
-acceptance gates, not experimental Mars tolerances. JSON reports in
-`outputs/physics/` include parameters, software versions, benchmark source hash,
-force samples and failed checks; `.log` files go in `outputs/log/`. A nonzero exit
-means at least one numerical check failed. Even exit zero does **not** establish
-Mars validity: material calibration, independent validation, bed-boundary studies,
-three-level convergence and validation of the experimental H1 integration remain necessary.
-
-The November 13 checks measured 55.652 N support against 55.650 N expected weight.
-Switching off feedback let the foot fall through to the rigid base. However,
-halving the timestep changed the lowest foot height by 4.52 mm; halving the grid
-spacing changed it by 4.41 mm. Both exceed the provisional 2 mm gate. **Numerical
-verification is incomplete; the H1 integration is experimental.** These
-heights include settling and contact discretization, not calibrated Mars sinkage.
-The same suite resisted a 5 N horizontal load with about 5 N of soil reaction;
-40 N produced 0.191 m more displacement than the unloaded control. All seven
-runs stayed finite. The full local report is
-[`mpm-verification-20261113-202431-915542.json`](outputs/physics/mpm-verification-20261113-202431-915542.json).
-
-Existing Mars recordings do not establish realistic sinkage, traction or dust behavior.
-The original motor gains are preserved on both planets. Preview applies **physical robot drag**:
-`F = −½ρCdA|v_rel|v_rel` at each link's centre of mass, using projected visual-box
-area, `Cd = 1` and still air. `--air-drag auto` selects density from gravity
-(Earth ≈1.225 kg/m³; Mars ≈0.0154 kg/m³); `--air-drag earth|mars|off` overrides
-robot drag alone. Dust retains its gravity-selected atmosphere. The same PPO
-action space and motor gains are preserved. Forces refresh every 5 ms with current
-H1 settings (20 ms if the backend owns four-step decimation), remaining applied
-through solver substeps. This simple model omits wake shielding, lift and spin torque; see
-[sources.md](sources.md) for assumptions and references. Air resistance at walking
-speeds is small, so a dramatic visual gait difference is not expected from drag alone.
-
-`scripts/check_air_drag.py --backend newton_mjwarp` checks measured momentum
-against force impulse in free flight, force composition and reset; use
-`--backend isaacsim_physx --visualizer kit --kit_args=--no-window` for the PhysX check.
-Add `--soil mpm` to the Newton check to verify forces through the actual soil coupler.
-Store redirected check output in `outputs/log/`.
-The Mars launcher logs its selected soil model and unvalidated scope.
-
-Requested named experiments now go to `outputs/recordings/MM-DD-YYYY/earth/earth-*`
-or `outputs/recordings/MM-DD-YYYY/mars/mars-*`. Unsolicited diagnostics go in
-`outputs/recordings/misc/MM-DD-YYYY/`. Existing November 13 Earth folders were moved intact under `earth/`.
-
-```bash
-mkdir -p outputs/log
-/home/eddie/env_isaaclab/bin/python scripts/view_scene.py --appearance grand-canyon --gravity mars --steps 300 --checkpoint .pretrained_checkpoints/h1_rough.pt --forward-velocity 0.5 --record mars-1 --camera-motion orbit --capture-requested --kit_args=--no-window > "outputs/log/mars-1-$(date +%Y%m%d-%H%M%S-%N).log" 2>&1
-```
+See [report.md](report.md) for the measured findings and [sources.md](sources.md) for the physical assumptions. Code licensing is recorded in [LICENSE](LICENSE); scene provenance is retained with the [Earth assets](src/mars_project/assets/data/polyhaven/verdant_trail/download-source.json) and [canyon assets](src/mars_project/assets/data/marslab/grand_canyon/download-source.json).
