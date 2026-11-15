@@ -5,7 +5,7 @@ import math
 import pytest
 from pxr import Gf, Usd, UsdGeom
 
-from mars_project.recordings import OrbitCamera, SmoothCameraTarget
+from mars_project.recordings import DollyOrbitCamera, OrbitCamera, SmoothCameraTarget
 
 
 def test_orbit_tracks_moving_midpoint_without_changing_radius():
@@ -38,3 +38,22 @@ def test_tracking_rejects_footstep_bounce_but_follows_travel():
     # An 8 cm, 2 Hz gait bounce becomes less than 1 cm peak-to-peak.
     assert max(vertical) - min(vertical) < 0.01
     assert abs(center[2] - 1) < 0.01
+
+
+def test_matched_dolly_orbit_holds_front_then_moves_viewer_right():
+    for heading in (0.0, -math.pi / 2):
+        stage = Usd.Stage.CreateInMemory()
+        camera = UsdGeom.Camera.Define(stage, "/Camera")
+        UsdGeom.Xformable(camera).AddTransformOp()
+        shot = DollyOrbitCamera(stage, "/Camera", (0, 0, 1), heading)
+        for progress, relative_angle in ((0, 0), (1 / 3, 0), (2 / 3, math.radians(25)), (1, math.radians(50))):
+            shot.update(progress)
+            matrix = UsdGeom.Xformable(camera).GetLocalTransformation()
+            eye = matrix.ExtractTranslation() - Gf.Vec3d(*shot.center)
+            assert tuple(eye) == pytest.approx(
+                (2.6 * math.cos(heading + relative_angle), 2.6 * math.sin(heading + relative_angle), 0)
+            )
+            assert tuple(matrix.GetInverse().Transform(Gf.Vec3d(*shot.center))) == pytest.approx((0, 0, -2.6))
+        assert camera.GetFocalLengthAttr().Get() == 22
+        assert camera.GetHorizontalApertureAttr().Get() == 36
+        assert camera.GetVerticalApertureAttr().Get() == 20.25

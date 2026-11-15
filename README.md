@@ -138,6 +138,10 @@ For an explicitly requested six-second orbit recording:
 
 Use `--appearance grand-canyon --record mars-demo` for Mars. Videos are 1080p, 25-fps H.264 MP4s with QuickTime-compatible encoding. Orbit mode adds one unrecorded simulation second for settling; render warmup does not advance physics. `--kit_args=--no-window` still uses the GPU and Kit renderer; SSH does not stream the viewport.
 
+For a matched editing pair, `--camera-motion dolly-orbit` tracks head-on for the first third of the clip, then eases through a 50° orbit toward the viewer's right. Both worlds use the same 22 mm lens, 2.6 m camera distance, and timing, while their walking physics remains independent. This mode also adds one unrecorded settling second. Use 450 steps for a nine-second clip; the `outputs/post/` pair uses `--forward-velocity 0.25` to keep the view within the Earth scenery.
+
+When the user explicitly requests a different delivery location, `--record-output outputs/post/earth.mp4` selects that exact MP4 path and requires `--record --capture-requested`. Existing files are never overwritten. Without this override, the normal dated capture paths apply.
+
 For stills, use `--screenshot LABEL` with a positive step limit. `--screenshot-pair LABEL` captures two frames one simulation second apart; `--screenshot-series LABEL --screenshot-count 5` captures a series. Capture modes are mutually exclusive. `--screenshot-requested` and `--capture-requested` are aliases.
 
 Only mark captures as requested when the user explicitly asked for them. Otherwise omit that flag so diagnostics use `recordings/misc/`. Requested labels such as `earth-demo` and `mars-demo` receive their own environment-grouped folders. Captures use Vancouver dates and avoid overwriting existing files.

@@ -1,5 +1,6 @@
 """Record simulator frames as a QuickTime-compatible H.264 MP4."""
 
+import json
 import math
 import subprocess
 from pathlib import Path
@@ -19,6 +20,8 @@ def record_video(
     requested=False,
     camera_motion="fixed",
     camera_target=(0.0, 0.0, 0.95),
+    camera_heading=0.0,
+    output_path=None,
 ):
     import imageio_ffmpeg
     from omni.kit.viewport.utility import get_active_viewport
@@ -31,7 +34,14 @@ def record_video(
         raise ValueError("Recording requires control steps divisible into exact 25-fps frames")
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     filename = f"{label}-orbit" if camera_motion == "orbit" else label
-    output = screenshot_path(filename, subfolder=label, requested=requested, suffix=".mp4")
+    if output_path is not None:
+        if not requested:
+            raise ValueError("An explicit recording destination requires a requested capture")
+        output = Path(output_path).expanduser().resolve()
+        if output.suffix.lower() != ".mp4" or output.exists():
+            raise ValueError("Recording destination must be a new .mp4 file")
+    else:
+        output = screenshot_path(filename, subfolder=label, requested=requested, suffix=".mp4")
     output.parent.mkdir(parents=True, exist_ok=True)
     viewport = get_active_viewport()
     if viewport is None:
@@ -40,13 +50,21 @@ def record_video(
     stage = get_current_stage()
     frame_robot(stage, viewport.camera_path, robot)
     orbit = None
-    if camera_motion == "orbit":
-        # Let the policy settle for one unrecorded second before the six-second shot.
+    if camera_motion in ("orbit", "dolly-orbit"):
+        # Let the policy settle for one unrecorded second before the shot.
         for _ in range(round(1.0 / step_dt)):
             action_step()
         midpoint = frame_robot(stage, viewport.camera_path, robot)
         camera_target = midpoint
-        orbit = OrbitCamera(stage, viewport.camera_path, camera_target)
+        if camera_motion == "dolly-orbit":
+            orbit = DollyOrbitCamera(stage, viewport.camera_path, camera_target, camera_heading)
+            print(
+                "CAMERA_SHOT "
+                + json.dumps(dict(mode=camera_motion, duration_s=steps * step_dt, fps=fps, **orbit.parameters)),
+                flush=True,
+            )
+        else:
+            orbit = OrbitCamera(stage, viewport.camera_path, camera_target)
         orbit.update(0.0)
     for _ in range(60):
         sim.render()
@@ -58,7 +76,8 @@ def record_video(
                     raise RuntimeError("Simulation closed before recording finished")
                 action_step()
             if orbit is not None:
-                orbit.update(index / max(1, steps // stride - 1), robot_center(robot), dt=1.0 / fps)
+                progress = index / max(1, steps // stride - 1)
+                orbit.update(progress, robot_center(robot), dt=1.0 / fps)
                 # Render the moved camera before scheduling its frame capture.
                 sim.render()
             capture_frame(sim, viewport, frames / f"{index:06d}.png")
@@ -76,6 +95,9 @@ def record_video(
                 "-i",
                 str(frames / "%06d.png"),
                 "-an",
+                # Kit's capture buffer can remain larger than the viewport.
+                "-vf",
+                "scale=1920:1080:flags=lanczos",
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -117,6 +139,50 @@ class OrbitCamera:
             self.center = self.tracker.update(center, dt)
         target = Gf.Vec3d(*self.center)
         eye = target + Gf.Vec3d(2.6 * math.cos(angle), 2.6 * math.sin(angle), 0.0)
+        self.transform.Set(Gf.Matrix4d().SetLookAt(eye, target, Gf.Vec3d(0, 0, 1)).GetInverse())
+
+
+class DollyOrbitCamera:
+    """Match a front tracking shot and viewer-right arc across independent worlds.
+
+    The first third remains head-on; the remaining two thirds sweep 50 degrees.
+    Heading is the route's world yaw, so Earth and Mars share robot-relative framing.
+    """
+
+    parameters = dict(
+        hold_fraction=1 / 3,
+        sweep_degrees=50.0,
+        direction="viewer_right",
+        distance_m=2.6,
+        focal_length_mm=22.0,
+        horizontal_aperture_mm=36.0,
+        vertical_aperture_mm=20.25,
+    )
+
+    def __init__(self, stage, camera_path, camera_target, heading):
+        from pxr import UsdGeom
+
+        self.camera = UsdGeom.Camera(stage.GetPrimAtPath(camera_path))
+        self.transform = UsdGeom.Xformable(self.camera).GetOrderedXformOps()[0]
+        self.camera.GetFocalLengthAttr().Set(self.parameters["focal_length_mm"])
+        self.camera.GetHorizontalApertureAttr().Set(self.parameters["horizontal_aperture_mm"])
+        self.camera.GetVerticalApertureAttr().Set(self.parameters["vertical_aperture_mm"])
+        self.center = tuple(camera_target)
+        self.tracker = SmoothCameraTarget(self.center)
+        self.heading = heading
+
+    def update(self, progress, center=None, *, dt=1.0 / 25):
+        from pxr import Gf
+
+        hold = self.parameters["hold_fraction"]
+        phase = max(0.0, min(1.0, (progress - hold) / (1.0 - hold)))
+        eased = phase**3 * (10 + phase * (-15 + 6 * phase))
+        angle = self.heading + math.radians(self.parameters["sweep_degrees"]) * eased
+        if center is not None:
+            self.center = self.tracker.update(center, dt)
+        target = Gf.Vec3d(*self.center)
+        distance = self.parameters["distance_m"]
+        eye = target + Gf.Vec3d(distance * math.cos(angle), distance * math.sin(angle), 0.0)
         self.transform.Set(Gf.Matrix4d().SetLookAt(eye, target, Gf.Vec3d(0, 0, 1)).GetInverse())
 
 

@@ -71,7 +71,13 @@ def parse_args():
     )
     parser.add_argument("--record", metavar="LABEL", help="Record --steps as a 25-fps MP4 in a LABEL folder")
     parser.add_argument(
-        "--camera-motion", choices=["fixed", "orbit"], default="fixed", help="Camera motion for MP4 recording"
+        "--record-output", type=Path, help="Explicit requested MP4 destination; requires --record --capture-requested"
+    )
+    parser.add_argument(
+        "--camera-motion",
+        choices=["fixed", "orbit", "dolly-orbit"],
+        default="fixed",
+        help="Fixed view, continuous orbit, or matched head-on tracking into a viewer-right orbit",
     )
     add_launcher_args(parser)
     parser.set_defaults(visualizer="kit")
@@ -90,6 +96,11 @@ def parse_args():
         parser.error("--screenshot-count must be between 1 and 26")
     if args.camera_motion != "fixed" and not args.record:
         parser.error("--camera-motion requires --record")
+    if args.record_output is not None:
+        if not args.record or not args.screenshot_requested:
+            parser.error("--record-output requires --record and --capture-requested")
+        if args.record_output.suffix.lower() != ".mp4" or args.record_output.expanduser().exists():
+            parser.error("--record-output must name a new .mp4 file")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
     if not math.isfinite(args.forward_velocity) or args.forward_velocity < 0:
@@ -277,6 +288,8 @@ def main():
                         args.record,
                         requested=args.screenshot_requested,
                         camera_motion=args.camera_motion,
+                        camera_heading=cfg.events.reset_base.params["pose_range"]["yaw"][0],
+                        output_path=args.record_output,
                         camera_target=(
                             cfg.scene.robot.init_state.pos[0],
                             cfg.scene.robot.init_state.pos[1],
