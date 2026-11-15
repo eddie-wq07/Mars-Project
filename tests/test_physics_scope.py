@@ -42,8 +42,6 @@ def test_canyon_defaults_to_coupled_mpm_without_changing_motor_gains():
         selection = getattr(cfg.observations.policy, name).params["asset_cfg"]
         assert selection.preserve_order
         assert tuple(selection.joint_names) == POLICY_JOINT_NAMES
-    assert getattr(cfg.scene, "regolith", None) is None
-    assert getattr(cfg.events, "deform_regolith", None) is None
     assert cfg.observations.policy.height_scan.func is mpm_height_scan
     assert cfg.scene.height_scanner.class_type is create_soil_height_scanner
     assert cfg.scene.height_scanner.mesh_prim_paths == ["/World/envs/env_0/SoilBed"]
@@ -69,7 +67,7 @@ def test_rigid_baseline_keeps_original_sensor_and_backend():
 
 
 def test_particle_mass_density_and_terrain_coverage():
-    from mars_project.environment.regolith import terrain_height
+    from mars_project.assets.terrain import terrain_height
 
     points, mass, radius = soil_particles()
     assert mass / (8 * radius**3) == pytest.approx(DENSITY)
@@ -98,9 +96,3 @@ def test_soil_cli_defaults_and_explicit_rigid_baseline(monkeypatch):
     assert parse_args().soil == "rigid"
     monkeypatch.setattr(sys, "argv", ["view_scene.py", "--appearance", "earth"])
     assert parse_args().soil == "rigid"
-
-
-def test_default_motor_damping_does_not_depend_on_planet(monkeypatch):
-    for planet in ("earth", "mars"):
-        monkeypatch.setattr(sys, "argv", ["view_scene.py", "--gravity", planet])
-        assert parse_args().joint_resistance_scale == 0.0

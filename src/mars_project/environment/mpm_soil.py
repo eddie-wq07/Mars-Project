@@ -9,7 +9,7 @@ import math
 
 import numpy as np
 
-from mars_project.environment.regolith import terrain_height
+from mars_project.assets.terrain import terrain_height
 from mars_project.scenes.canyon import OPTIMIZED_DIR
 
 X_MIN, X_MAX = -1.5, 7.0

@@ -9,9 +9,9 @@ import math
 
 import numpy as np
 
+from mars_project.assets.terrain import terrain_height
 from mars_project.environment.airborne_dust import Atmosphere, DustParcels
 from mars_project.environment.mpm_soil import DENSITY, THICKNESS, VOXEL_SIZE, X_MAX, X_MIN, Y_MAX, Y_MIN
-from mars_project.environment.regolith import terrain_height
 from mars_project.environment.soil_columns import column_depth, surface_fraction
 
 # Fraction of a detached bulk sample released as suspended fines. This is an

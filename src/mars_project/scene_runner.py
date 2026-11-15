@@ -38,16 +38,10 @@ def parse_args():
         "--soil",
         choices=["mpm", "rigid"],
         default=None,
-        help="Canyon defaults to experimental two-way MPM; rigid selects the previous PhysX baseline",
+        help="Canyon defaults to experimental two-way MPM; rigid selects the rigid-ground PhysX baseline",
     )
     parser.add_argument(
         "--forward-velocity", type=float, default=0.0, help="Constant body-forward velocity command in m/s"
-    )
-    parser.add_argument(
-        "--joint-resistance-scale",
-        type=float,
-        default=0.0,
-        help="Legacy heuristic, disabled by default; 0 preserves motor gains. This is NOT atmospheric drag.",
     )
     parser.add_argument(
         "--checkpoint", help="Optional trained rough-H1 RSL-RL checkpoint; otherwise zero-action preview"
@@ -98,8 +92,6 @@ def parse_args():
         parser.error("--camera-motion requires --record")
     if args.checkpoint and not Path(args.checkpoint).expanduser().is_file():
         parser.error("checkpoint file does not exist")
-    if not math.isfinite(args.joint_resistance_scale) or args.joint_resistance_scale < 0:
-        parser.error("--joint-resistance-scale must be finite and nonnegative")
     if not math.isfinite(args.forward_velocity) or args.forward_velocity < 0:
         parser.error("--forward-velocity must be finite and nonnegative")
     if args.forward_velocity and not args.checkpoint:
@@ -156,10 +148,6 @@ def main():
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=[f"physics={backend}"])
     cfg.sim.gravity = (0.0, 0.0, -3.71 if args.gravity == "mars" else -9.81)
     configure_preview(cfg, args.appearance, args.forward_velocity, soil=args.soil, air_drag=args.air_drag)
-    from mars_project.environment.resistance import apply_joint_resistance, environment_profile
-
-    profile = environment_profile(args.gravity)
-    apply_joint_resistance(cfg, profile, args.joint_resistance_scale)
     if args.appearance == "grand-canyon":
         print(
             f"PHYSICS_SCOPE ground={args.soil} soil_model={'newton_implicit_mpm' if args.soil == 'mpm' else 'none'} "

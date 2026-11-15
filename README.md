@@ -120,7 +120,7 @@ observations, rewards and episode resets. The project runner does not implement 
 
 ## Current state
 
-Green = verified scope. Amber = experimental. Blue = pending. Red = retired.
+Green = verified scope. Amber = experimental. Blue = pending.
 
 ```mermaid
 flowchart TD
@@ -132,22 +132,18 @@ flowchart TD
     grains["6. EXPERIMENTAL: Airborne fines<br/>Mass transfers from detached soil.<br/>Micron parcels, gravity and gas drag.<br/>Release rate still needs calibration."]
     test["7. EXPERIMENTAL: H1 on MPM<br/>100 Mars trials: 73 arrivals, 27 boundary exits.<br/>Reset and mass checks passed.<br/>Material calibration remains unresolved."]
     compare["8. MEASURED: Comparison<br/>Same policy, rigid solver, target and command.<br/>All 200 trajectories audited.<br/>Combined environments; gravity is not isolated."]
-    retired["RETIRED from playback<br/>Prescribed footprint columns.<br/>Cosmetic dust emission.<br/>Default added joint damping."]
 
     earth --> capture --> solver --> calibration --> air --> grains --> test --> compare
-    retired -.-> solver
 
     classDef verified fill:#dcfce7,stroke:#16a34a,color:#14532d;
     classDef experimental fill:#fef3c7,stroke:#d97706,color:#78350f;
     classDef pending fill:#dbeafe,stroke:#2563eb,color:#172554;
-    classDef retired fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
     class earth,capture,compare verified;
     class solver,air,grains,test experimental;
     class calibration pending;
-    class retired retired;
 ```
 
-**Canyon playback now defaults to experimental two-way MPM soil. `--soil rigid` restores the previous rigid-ground PhysX preview. Neither mode is validated Martian loose-sand inference.**
+**Canyon playback defaults to experimental two-way MPM soil. `--soil rigid` selects the rigid-ground PhysX baseline. Neither mode is validated Martian loose-sand inference.**
 
 ## Cleanup performed
 
@@ -158,6 +154,7 @@ flowchart TD
 - Removed outdated planning/architecture documents; this README describes the current structure and next work.
 - Kept every texture referenced by the active USD scenes. Asset validation now checks referenced dependencies for missing files and LFS pointers before simulation startup.
 - Kept the pretrained checkpoint cache locally and added it to `.gitignore`.
+- Removed prescribed-deformation soil, cosmetic footstep dust, and joint-damping heuristics, together with their obsolete commands, tests, assets, and outdated architecture diagrams. Historical outputs remain intact; the current architecture is documented here.
 
 ## Measured trajectory evaluation
 
@@ -280,6 +277,7 @@ scripts/verify_mpm_soil.py        Numerical controls and refinement checks
 scripts/check_mpm_playback.py     Loaded H1/soil interaction, sensing and reset check
 scripts/check_soil_walk.py        Seven-second policy, local soil and dust conservation check
 scripts/check_air_drag.py         Robot momentum, additive force and reset checks on both backends
+scripts/build_sand_normal.py      Rebuild the normal texture used by the active MPM terrain
 src/mars_project/
   scene_runner.py                CLI, simulator lifecycle, checkpoint inference and stepping
   tasks/h1.py                    H1 environment/PPO configuration and Gym registration
@@ -294,10 +292,11 @@ src/mars_project/
   environment/aerodynamics.py   Link geometry areas, atmosphere density and quadratic drag
   environment/air_drag.py       Robot external-force integration; zero extra policy inputs
   environment/dust_volume.py     Conservative extinction grid and native Kit volume rendering
-  environment/                  Also retains legacy deformation/dust and opt-in damping
+  environment/soil_columns.py    Conservative volume-to-height reconstruction for MPM
   assets/scene_paths.py          Runtime paths and USD dependency validation
+  assets/terrain.py              Shared canyon collision-height sampler
   assets/data/                  Packaged runtime assets and provenance
-tests/                          Registration and asset-validation checks
+tests/                          Physics, control configuration, assets, captures and evaluation checks
 ```
 
 `h1.py` defines **what environment the policy controls**. `scene_runner.py` defines **how to launch and step it**.
@@ -755,13 +754,8 @@ The same suite resisted a 5 N horizontal load with about 5 N of soil reaction;
 runs stayed finite. The full local report is
 [`mpm-verification-20261113-202431-915542.json`](outputs/physics/mpm-verification-20261113-202431-915542.json).
 
-The old pressure-driven kinematic columns and cosmetic dust modules are retained
-only for provenance and old artifact checks; playback no longer activates them.
-Their previous tests verified implementation behavior, not soil constitutive laws.
 Existing Mars recordings do not establish realistic sinkage, traction or dust behavior.
-`--joint-resistance-scale` now defaults to **0**, preserving the original motor
-gains on both planets. Nonzero values explicitly opt into the old damping heuristic;
-they are not aerodynamic forces. Preview now applies **physical robot drag** separately:
+The original motor gains are preserved on both planets. Preview applies **physical robot drag**:
 `F = −½ρCdA|v_rel|v_rel` at each link's centre of mass, using projected visual-box
 area, `Cd = 1` and still air. `--air-drag auto` selects density from gravity
 (Earth ≈1.225 kg/m³; Mars ≈0.0154 kg/m³); `--air-drag earth|mars|off` overrides
@@ -777,9 +771,7 @@ against force impulse in free flight, force composition and reset; use
 `--backend isaacsim_physx --visualizer kit --kit_args=--no-window` for the PhysX check.
 Add `--soil mpm` to the Newton check to verify forces through the actual soil coupler.
 Store redirected check output in `outputs/log/`.
-The Mars launcher logs its selected soil model
-and unvalidated scope. The retired
-`check_regolith.py` now requires `--legacy-heuristic` to reproduce its old checks.
+The Mars launcher logs its selected soil model and unvalidated scope.
 
 Requested named experiments now go to `outputs/recordings/MM-DD-YYYY/earth/earth-*`
 or `outputs/recordings/MM-DD-YYYY/mars/mars-*`. Unsolicited diagnostics go in

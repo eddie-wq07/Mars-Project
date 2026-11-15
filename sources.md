@@ -65,7 +65,7 @@ lists Pathfinder/Sojourner **1290–1520 kg/m³ density, 30–40° friction angl
 - Simple approximation: uniform still air; no lift, wake shielding, spin torque or aerodynamic buoyancy. Bounding boxes overestimate some silhouettes; link overlap is not subtracted.
 - Forces refresh every **5 ms** with the current H1 settings and remain applied through solver substeps (**20 ms** if a backend owns four-step decimation; logged at startup). No CFD is solved.
 - `--air-drag auto` follows gravity; `earth`, `mars`, or `off` override **robot drag only** for controlled checks. Existing dust atmosphere continues to follow gravity.
-- **Motor damping unchanged:** `--joint-resistance-scale 0`; the disabled heuristic uses Mars `0.020 kg/m³`, adding **0** damping.
+- **Motor damping unchanged:** atmospheric forces are applied externally; the checkpoint's actuator gains are preserved.
 - Dust assumptions: radii **1/2/5/10 µm**, mass weights **10/40/35/15%**, grain density **2500 kg/m³**, release fraction **10⁻⁶**.
 - Dust uses slip-corrected Stokes drag; release, viscosity, grain distribution and appearance are assumptions.
 - Implementation: [aerodynamics.py](src/mars_project/environment/aerodynamics.py), [air_drag.py](src/mars_project/environment/air_drag.py), [airborne_dust.py](src/mars_project/environment/airborne_dust.py). Startup logs record density, coefficient, wind and every link's dimensions.

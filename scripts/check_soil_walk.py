@@ -19,14 +19,12 @@ def main():
 
     import mars_project.tasks  # noqa: F401
     from mars_project.environment.mpm_soil import soil_progress, verify_soil_loaded
-    from mars_project.environment.resistance import apply_joint_resistance, environment_profile
     from mars_project.scene_runner import load_preview_policy
     from mars_project.scenes.setup import configure_preview
 
     cfg = parse_env_cfg("Mars-Project-H1", num_envs=1, overrides=["physics=newton_mjwarp"])
     cfg.sim.gravity = (0.0, 0.0, -3.71)
     configure_preview(cfg, "grand-canyon", 0.5, soil="mpm")
-    apply_joint_resistance(cfg, environment_profile("mars"), 0.0)
     cfg.ui_window_class_type = None
     with launch_simulation(cfg, args):
         env = gym.make("Mars-Project-H1", cfg=cfg)

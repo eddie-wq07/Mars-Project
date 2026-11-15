@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from pxr import Usd, UsdGeom
 
+from mars_project.assets.terrain import terrain_height
 from mars_project.scenes.canyon import OPTIMIZED_DIR
 
 
@@ -31,3 +32,12 @@ def test_local_corridor_matches_source_and_covers_scanner():
             if min(uv) >= -1e-5 and sum(uv) <= 1 + 1e-5:
                 heights.append(a[2] + uv[0] * (b[2] - a[2]) + uv[1] * (c[2] - a[2]))
         assert heights and p[2] == pytest.approx(max(heights), abs=1e-6)
+
+
+def test_height_sampler_matches_collision_triangle_interiors():
+    stage = Usd.Stage.Open(str(OPTIMIZED_DIR / "local_ground.usdc"))
+    mesh = UsdGeom.Mesh(stage.GetPrimAtPath("/Canyon/Ground"))
+    points = np.asarray(mesh.GetPointsAttr().Get())
+    faces = np.asarray(mesh.GetFaceVertexIndicesAttr().Get()).reshape(-1, 3)
+    centers = points[faces[::37]].mean(axis=1)
+    assert np.allclose(terrain_height(centers[:, 0], centers[:, 1]), centers[:, 2], atol=1e-6)
