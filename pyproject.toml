@@ -12,7 +12,8 @@ name = "mars_project"
 version = "0.1.0"
 description = "Isaac Lab environments for mars_project."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 authors = [
     { name = "Edward Jung" },
 ]
